@@ -10,11 +10,13 @@ use light_consts::lux::AMBIENT_DAYLIGHT;
 use mipmaps::MipmapGeneratorPlugin;
 use noisy_bevy::NoisyShaderPlugin;
 use room::{Room, RoomPlugin};
+use update_material_textures::UpdateMaterialTexturesPlugin;
 
 mod background;
 mod mipmaps;
 mod procedural_material;
 mod room;
+mod update_material_textures;
 
 fn main() {
     App::new()
@@ -22,6 +24,7 @@ fn main() {
         .add_plugins(WorldInspectorPlugin::new())
         .add_plugins(FpsOverlayPlugin::default())
         .add_plugins(NoisyShaderPlugin)
+        .add_plugins(UpdateMaterialTexturesPlugin::<StandardMaterial>::default())
         .add_plugins(MipmapGeneratorPlugin)
         .add_plugins(BackgroundPlugin)
         .add_plugins(RoomPlugin)
