@@ -7,3 +7,6 @@ edition = "2021"
 bevy = { version = "0.15.1", features = ["bevy_dev_tools"] }
 bevy-inspector-egui = "0.28.1"
 noisy_bevy = "0.8.0"
+rand = "0.8.5"
+strum = "0.26.3"
+strum_macros = "0.26.4"

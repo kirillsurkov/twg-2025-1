@@ -11,6 +11,7 @@ use noisy_bevy::NoisyShaderPlugin;
 use room::{Room, RoomPlugin};
 
 mod background;
+mod procedural_material;
 mod room;
 
 fn main() {
