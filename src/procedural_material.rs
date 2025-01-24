@@ -27,6 +27,8 @@ use bevy::{
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
+use crate::mipmaps::{GenerateMips, GenerateMipsMode};
+
 #[derive(Default)]
 pub struct ProceduralMaterialPlugin<Settings> {
     _pd: PhantomData<Settings>,
@@ -260,6 +262,16 @@ fn request_mips<Settings: Component + ProceduralMaterial>(
             generate_mips.extend(TextureLayer::iter().map(|l| (l.clone(), mat.textures.get(l))));
             mat.mips_requested = true;
         });
+
+    for (layer, handle) in generate_mips {
+        main_world.spawn(GenerateMips::new(
+            handle.id(),
+            match Settings::texture_def(layer).update {
+                TextureUpdate::Once => GenerateMipsMode::Once,
+                TextureUpdate::EachFrame => GenerateMipsMode::EachFrame,
+            },
+        ));
+    }
 }
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
