@@ -2,6 +2,7 @@ use background::BackgroundPlugin;
 use bevy::{
     core_pipeline::{bloom::Bloom, tonemapping::DebandDither},
     dev_tools::fps_overlay::FpsOverlayPlugin,
+    input::mouse::MouseWheel,
     prelude::*,
 };
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
@@ -21,6 +22,7 @@ fn main() {
         .add_plugins(BackgroundPlugin)
         .add_plugins(RoomPlugin)
         .add_systems(Startup, setup)
+        .add_systems(Update, camera_control)
         .insert_resource(AmbientLight::NONE)
         .run();
 }
@@ -55,4 +57,15 @@ fn setup(mut commands: Commands) {
     commands.spawn((Room, Transform::from_translation(Vec3::new(-2.0, 0.0, 0.0))));
     commands.spawn((Room, Transform::from_translation(Vec3::new(0.0, 0.0, 0.0))));
     commands.spawn((Room, Transform::from_translation(Vec3::new(2.0, 0.0, 0.0))));
+}
+
+fn camera_control(
+    mut wheel: EventReader<MouseWheel>,
+    mut camera: Query<&mut Transform, With<Camera3d>>,
+) {
+    let mut camera = camera.single_mut();
+
+    for event in wheel.read() {
+        camera.translation.y -= event.y;
+    }
 }
