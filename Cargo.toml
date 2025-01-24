@@ -5,4 +5,5 @@ edition = "2021"
 
 [dependencies]
 bevy = { version = "0.15.1", features = ["bevy_dev_tools"] }
+bevy-inspector-egui = "0.28.1"
 noisy_bevy = "0.8.0"
