@@ -1,0 +1,56 @@
+# Untitled space game
+- [ ] Loading screen
+- [ ] Main menu
+- [ ] Game scene
+    - [x] Background
+    - [ ] Game goal
+        - [x] Summary: You need to craft a battery for your main ship to perform a warp jump to the nearest base
+        - [ ] Implement it
+    - [ ] Initial crash scene
+    - [ ] Ending scene
+    - [ ] Ship
+        - [ ] Main ship block
+            - [x] 3D model
+            - [ ] Textures
+            - [ ] Logic
+        - [ ] Extension blocks
+            - [x] 3D model
+            - [ ] Textures
+            - [ ] Logic
+            - [ ] Building
+            - [ ] Destructing (cascade)
+            - [ ] Main structures
+                - [ ] Furnace
+                    - [x] 3D model
+                    - [x] Textures
+                    - [ ] Logic
+                - [ ] Stone crusher
+                    - [x] 3D model
+                    - [x] Textures
+                    - [ ] Logic
+                - [ ] Enrichment station
+                    - [ ] 3D model
+                    - [ ] Textures
+                    - [ ] Logic
+                - [ ] Cargo
+                    - [ ] 3D model
+                    - [ ] Textures
+                    - [ ] Logic
+                - [ ] Power generator
+                    - [x] 3D model
+                    - [x] Textures
+                    - [ ] Logic
+            - [ ] Secondary structures
+                - [ ] Shield
+                - [ ] Hook
+    - [ ] Asteroids
+        - [ ] Spawn logic (Can't hit main ship block)
+        - [ ] Gray asteroid (Silicon)
+        - [ ] Red asteroid (Copper)
+        - [ ] Green asteroid (Uranium)
+        - [ ] Blue asteroid (Water)
+        - [ ] Yellow asteroid (Aurelium)
+    - [ ] Craft recipes
+    - [ ] UI
+- [ ] Titles
+- [ ] Music
