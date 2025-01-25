@@ -89,7 +89,7 @@ fn init_room(
                         SceneRoot(
                             asset_server.load(GltfAssetLabel::Scene(0).from_asset("room.glb")),
                         ),
-                        Transform::from_xyz(room.x as f32 * 2.0, room.y as f32 * 2.0, 0.0),
+                        Transform::from_xyz(room.x as f32 * 2.01, room.y as f32 * 2.01, 0.0),
                         State::Materials,
                     ))
                     .with_children(|parent| {
