@@ -63,9 +63,8 @@ fn setup(mut commands: Commands) {
         },
         Bloom::NATURAL,
         DebandDither::Enabled,
-        Transform::from_xyz(0.0, 15.0, 0.0)
-            .with_rotation(Quat::from_rotation_x(-90.0_f32.to_radians())),
-        TargetPos(Vec3::new(0.0, 15.0, 0.0)),
+        Transform::from_xyz(0.0, 0.0, 15.0),
+        TargetPos(Vec3::new(0.0, 0.0, 15.0)),
     ));
     commands.spawn((
         DirectionalLight {
@@ -73,7 +72,7 @@ fn setup(mut commands: Commands) {
             shadows_enabled: true,
             ..Default::default()
         },
-        Transform::from_xyz(1.0, 10.0, 1.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_xyz(1.0, 1.0, 10.0).looking_at(Vec3::ZERO, Vec3::Z),
     ));
     commands.spawn((
         DirectionalLight {
@@ -81,11 +80,12 @@ fn setup(mut commands: Commands) {
             shadows_enabled: true,
             ..Default::default()
         },
-        Transform::from_xyz(-1.0, 10.0, -1.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_xyz(-1.0, -1.0, 10.0).looking_at(Vec3::ZERO, Vec3::Z),
     ));
     commands.spawn(Room { x: -1, y: 0 });
     commands.spawn(Room { x: 0, y: 0 });
     commands.spawn(Room { x: 1, y: 0 });
+    commands.spawn(Room { x: 0, y: 1 });
 }
 
 fn camera_control(
@@ -96,10 +96,10 @@ fn camera_control(
     let (mut camera, mut target_pos) = camera.single_mut();
 
     for event in wheel.read() {
-        **target_pos = **target_pos - Vec3::new(0.0, event.y, 0.0);
+        **target_pos = **target_pos - Vec3::new(0.0, 0.0, event.y);
     }
 
-    target_pos.y = target_pos.y.max(2.0);
+    target_pos.z = target_pos.z.max(2.0);
 
     let diff = **target_pos - camera.translation;
     camera.translation += diff * time.delta_secs() / 0.1;
