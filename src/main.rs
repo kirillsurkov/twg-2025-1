@@ -1,4 +1,4 @@
-use background::BackgroundPlugin;
+use background::{BackgroundPlugin, RenderBackground};
 use bevy::{
     core_pipeline::{bloom::Bloom, tonemapping::DebandDither},
     dev_tools::fps_overlay::FpsOverlayPlugin,
@@ -29,7 +29,7 @@ fn main() {
         .add_plugins(UpdateMaterialTexturesPlugin::<StandardMaterial>::default())
         .add_plugins(ModifyMaterialPlugin::<StandardMaterial>::default())
         .add_plugins(MipmapGeneratorPlugin)
-        .add_plugins(BackgroundPlugin)
+        .add_plugins(BackgroundPlugin::new("stars.wgsl"))
         .add_plugins(RoomPlugin)
         .add_systems(Startup, setup)
         .add_systems(Update, camera_control)
@@ -49,9 +49,12 @@ fn setup(mut commands: Commands) {
         Camera3d::default(),
         Camera {
             hdr: true,
+            clear_color: ClearColorConfig::None,
             ..Default::default()
         },
+        RenderBackground,
         RayCastPickable,
+        Msaa::Off,
         Bloom::NATURAL,
         DebandDither::Enabled,
         Transform::from_xyz(0.0, 15.0, 0.0)

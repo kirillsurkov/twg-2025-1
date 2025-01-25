@@ -1,13 +1,16 @@
-#import bevy_render::globals::Globals
-#import bevy_sprite::mesh2d_vertex_output::VertexOutput
-#import bevy_sprite::sprite_view_bindings::view
+#import bevy_core_pipeline::fullscreen_vertex_shader::FullscreenVertexOutput
 
-@group(0) @binding(1) var<uniform> globals: Globals;
+struct BackgroundGlobals {
+    time: f32,
+    texture_size: vec2<f32>,
+}
 
-fn to_linear(nonlinear: vec4<f32>) -> vec4<f32> {
-    let cutoff = step(nonlinear, vec4<f32>(0.04045));
-    let higher = pow((nonlinear + vec4<f32>(0.055)) / vec4<f32>(1.055), vec4<f32>(2.4));
-    let lower = nonlinear / vec4<f32>(12.92);
+@group(0) @binding(0) var<uniform> globals: BackgroundGlobals;
+
+fn to_linear(nonlinear: vec3<f32>) -> vec3<f32> {
+    let cutoff = step(nonlinear, vec3<f32>(0.04045));
+    let higher = pow((nonlinear + vec3<f32>(0.055)) / vec3<f32>(1.055), vec3<f32>(2.4));
+    let lower = nonlinear / vec3<f32>(12.92);
     return mix(higher, lower, cutoff);
 }
 
@@ -119,22 +122,25 @@ fn dither(color: vec3<f32>, frag_coord: vec2<f32>, levels: f32) -> vec3<f32> {
 }
 
 @fragment
-fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
-    let frag_coord = vec2<f32>(in.uv.x, 1.0 - in.uv.y) * vec2<f32>(view.viewport.zw);
-    // let coord = frag_coord / f32(max(view.viewport.z, view.viewport.w));
+fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
+    let globals_time = globals.time;
+    let texture_size = globals.texture_size;//vec2<f32>(2560.0, 1440.0);
+
+    let frag_coord = vec2<f32>(in.uv.x, 1.0 - in.uv.y) * texture_size;
+    // let coord2560 = frag_coord / f32(max(texture_size.x, texture_size.y));
     let coord2560 = frag_coord / 2560.0;
 
-    let nebula_color1 = hsv2rgb(vec3<f32>(0.66 * cos(globals.time * 0.05), 0.5, 0.25));
-    let nebula_color2 = hsv2rgb(vec3<f32>(0.66 * cos(globals.time * 0.07), 1.0, 0.25));
+    let nebula_color1 = hsv2rgb(vec3<f32>(0.66 * cos(globals_time * 0.05), 0.5, 0.25));
+    let nebula_color2 = hsv2rgb(vec3<f32>(0.66 * cos(globals_time * 0.07), 1.0, 0.25));
 
-    let nebula1 = fractal_nebula(coord2560 + vec2(globals.time * 0.001 + 0.1, 0.1), nebula_color1, 1.0);
-    let nebula2 = fractal_nebula(coord2560 + vec2(globals.time * 0.001, 0.2), nebula_color2, 0.5);
+    let nebula1 = fractal_nebula(coord2560 + vec2(globals_time * 0.001 + 0.1, 0.1), nebula_color1, 1.0);
+    let nebula2 = fractal_nebula(coord2560 + vec2(globals_time * 0.001, 0.2), nebula_color2, 0.5);
 
-    let stars1 = stars(coord2560 + vec2<f32>(globals.time, 0.0) * 0.004, 8.0, 0.03, 2.0) * vec3(0.74, 0.74, 0.74);
-    let stars2 = stars(coord2560 + vec2<f32>(globals.time, 0.0) * 0.002, 16.0, 0.02, 1.0) * vec3(0.97, 0.74, 0.74);
-    let stars3 = stars(coord2560 + vec2<f32>(globals.time, 0.0) * 0.001, 32.0, 0.01, 0.5) * vec3(0.9, 0.9, 0.95);
+    let stars1 = stars(coord2560 + vec2<f32>(globals_time, 0.0) * 0.004, 8.0, 0.03, 2.0) * vec3(0.74, 0.74, 0.74);
+    let stars2 = stars(coord2560 + vec2<f32>(globals_time, 0.0) * 0.002, 16.0, 0.02, 1.0) * vec3(0.97, 0.74, 0.74);
+    let stars3 = stars(coord2560 + vec2<f32>(globals_time, 0.0) * 0.001, 32.0, 0.01, 0.5) * vec3(0.9, 0.9, 0.95);
 
     let result = nebula1 + nebula2 + stars1 + stars2 + stars3;
 
-    return to_linear(vec4<f32>(dither(result, frag_coord, 64.0), 1.0));
+    return vec4<f32>(to_linear(clamp(dither(result, frag_coord, 64.0), vec3<f32>(0.0), vec3<f32>(1.0))), 1.0);
 }
