@@ -1,6 +1,8 @@
 use background::{BackgroundPlugin, RenderBackground};
 use bevy::{
-    core_pipeline::{bloom::Bloom, tonemapping::DebandDither},
+    core_pipeline::{
+        bloom::Bloom, oit::OrderIndependentTransparencySettings, tonemapping::DebandDither,
+    },
     dev_tools::fps_overlay::FpsOverlayPlugin,
     input::mouse::MouseWheel,
     prelude::*,
@@ -8,17 +10,17 @@ use bevy::{
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use light_consts::lux::AMBIENT_DAYLIGHT;
 use mipmaps::MipmapGeneratorPlugin;
-use noisy_bevy::NoisyShaderPlugin;
 use modify_material::ModifyMaterialPlugin;
+use noisy_bevy::NoisyShaderPlugin;
 use room::{Room, RoomPlugin};
 use update_material_textures::UpdateMaterialTexturesPlugin;
 
 mod background;
 mod mipmaps;
+mod modify_material;
 mod procedural_material;
 mod room;
 mod update_material_textures;
-mod modify_material;
 
 fn main() {
     App::new()
@@ -55,6 +57,10 @@ fn setup(mut commands: Commands) {
         RenderBackground,
         RayCastPickable,
         Msaa::Off,
+        OrderIndependentTransparencySettings {
+            layer_count: 32,
+            alpha_threshold: 0.01,
+        },
         Bloom::NATURAL,
         DebandDither::Enabled,
         Transform::from_xyz(0.0, 15.0, 0.0)
