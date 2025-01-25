@@ -27,7 +27,7 @@ fn main() {
         .add_plugins(FpsOverlayPlugin::default())
         .add_plugins(NoisyShaderPlugin)
         .add_plugins(UpdateMaterialTexturesPlugin::<StandardMaterial>::default())
-        .add_plugins(ModifyMaterialPlugin)
+        .add_plugins(ModifyMaterialPlugin::<StandardMaterial>::default())
         .add_plugins(MipmapGeneratorPlugin)
         .add_plugins(BackgroundPlugin)
         .add_plugins(RoomPlugin)
