@@ -9,6 +9,7 @@ use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use light_consts::lux::AMBIENT_DAYLIGHT;
 use mipmaps::MipmapGeneratorPlugin;
 use noisy_bevy::NoisyShaderPlugin;
+use modify_material::ModifyMaterialPlugin;
 use room::{Room, RoomPlugin};
 use update_material_textures::UpdateMaterialTexturesPlugin;
 
@@ -17,19 +18,25 @@ mod mipmaps;
 mod procedural_material;
 mod room;
 mod update_material_textures;
+mod modify_material;
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins)
+        .add_plugins((DefaultPlugins, MeshPickingPlugin))
         .add_plugins(WorldInspectorPlugin::new())
         .add_plugins(FpsOverlayPlugin::default())
         .add_plugins(NoisyShaderPlugin)
         .add_plugins(UpdateMaterialTexturesPlugin::<StandardMaterial>::default())
+        .add_plugins(ModifyMaterialPlugin)
         .add_plugins(MipmapGeneratorPlugin)
         .add_plugins(BackgroundPlugin)
         .add_plugins(RoomPlugin)
         .add_systems(Startup, setup)
         .add_systems(Update, camera_control)
+        .insert_resource(MeshPickingSettings {
+            require_markers: true,
+            ray_cast_visibility: RayCastVisibility::Any,
+        })
         .insert_resource(AmbientLight::NONE)
         .run();
 }
@@ -44,6 +51,7 @@ fn setup(mut commands: Commands) {
             hdr: true,
             ..Default::default()
         },
+        RayCastPickable,
         Bloom::NATURAL,
         DebandDither::Enabled,
         Transform::from_xyz(0.0, 15.0, 0.0)
@@ -66,9 +74,9 @@ fn setup(mut commands: Commands) {
         },
         Transform::from_xyz(-1.0, 10.0, -1.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
-    commands.spawn((Room, Transform::from_translation(Vec3::new(-2.0, 0.0, 0.0))));
-    commands.spawn((Room, Transform::from_translation(Vec3::new(0.0, 0.0, 0.0))));
-    commands.spawn((Room, Transform::from_translation(Vec3::new(2.0, 0.0, 0.0))));
+    commands.spawn(Room { x: -1, y: 0 });
+    commands.spawn(Room { x: 0, y: 0 });
+    commands.spawn(Room { x: 1, y: 0 });
 }
 
 fn camera_control(
