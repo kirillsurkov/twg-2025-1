@@ -1,10 +1,18 @@
-use bevy::{core_pipeline::{bloom::Bloom, oit::OrderIndependentTransparencySettings, tonemapping::DebandDither}, input::mouse::MouseWheel, prelude::*};
+use bevy::{
+    core_pipeline::{
+        bloom::Bloom, oit::OrderIndependentTransparencySettings, tonemapping::DebandDither,
+    },
+    input::mouse::MouseWheel,
+    prelude::*,
+};
 use game_cursor::GameCursorPlugin;
 use light_consts::lux::AMBIENT_DAYLIGHT;
+use room::RoomPlugin;
 
-use crate::{background::{BackgroundPlugin, RenderBackground}, room::RoomPlugin};
+use crate::background::{BackgroundPlugin, RenderBackground};
 
 pub mod game_cursor;
+mod room;
 
 pub struct GamePlugin;
 
@@ -75,4 +83,29 @@ fn camera_control(
 
     let diff = **target_pos - camera.translation;
     camera.translation += diff * time.delta_secs() / 0.1;
+}
+
+#[derive(Resource)]
+enum PlayerState {
+    Idle,
+    Construct,
+    Destruct,
+}
+
+fn update_state(mut player_state: ResMut<PlayerState>, keyboard: Res<ButtonInput<KeyCode>>) {
+    if keyboard.just_pressed(KeyCode::KeyB) {
+        *player_state = if let PlayerState::Construct = *player_state {
+            PlayerState::Idle
+        } else {
+            PlayerState::Construct
+        }
+    }
+
+    if keyboard.just_pressed(KeyCode::KeyD) {
+        *player_state = if let PlayerState::Destruct = *player_state {
+            PlayerState::Idle
+        } else {
+            PlayerState::Destruct
+        };
+    }
 }

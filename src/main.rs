@@ -11,7 +11,6 @@ mod game;
 mod mipmaps;
 mod modify_material;
 mod procedural_material;
-mod room;
 mod update_material_textures;
 
 fn main() {
