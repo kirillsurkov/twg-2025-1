@@ -231,17 +231,7 @@ impl ProceduralMaterial for RoomFloorMaterial {
     }
 
     fn size() -> (u32, u32) {
-        (512, 512)
-    }
-
-    fn texture_def(layer: TextureLayer) -> TextureDef {
-        match layer {
-            TextureLayer::Emissive => TextureDef {
-                mode: TextureMode::Private,
-                update: TextureUpdate::EachFrame,
-            },
-            _ => TextureDef::default(),
-        }
+        (120, 120)
     }
 }
 

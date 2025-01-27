@@ -1,58 +1,49 @@
-use std::marker::PhantomData;
+use std::{collections::BTreeMap, marker::PhantomData};
 
 use bevy::{
-    asset::RenderAssetUsages, core_pipeline::{
-        core_3d::graph::{Core3d, Node3d},
-        fullscreen_vertex_shader::fullscreen_shader_vertex_state,
-    }, image::TextureFormatPixelInfo, prelude::*, render::{
-        extract_component::{
-            ComponentUniforms, DynamicUniformIndex, ExtractComponent, ExtractComponentPlugin,
-            UniformComponentPlugin,
-        },
-        render_asset::RenderAssets,
+    core_pipeline::core_3d::graph::{Core3d, Node3d},
+    pbr::{ExtendedMaterial, MaterialExtension},
+    prelude::*,
+    render::{
         render_graph::{Node, NodeRunError, RenderGraphApp, RenderGraphContext, RenderLabel},
         render_resource::{
-            binding_types::uniform_buffer, encase::internal::WriteInto, BindGroupEntries,
-            BindGroupLayout, BindGroupLayoutEntries, CachedPipelineState, CachedRenderPipelineId,
-            ColorTargetState, ColorWrites, Extent3d, FragmentState, MultisampleState, Operations,
-            Pipeline, PipelineCache, PrimitiveState, RenderPassColorAttachment,
-            RenderPassDescriptor, RenderPipelineDescriptor, ShaderStages, ShaderType,
-            TextureDimension, TextureFormat, TextureUsages, TextureViewDescriptor,
+            binding_types::{storage_buffer_read_only, texture_storage_2d_array, uniform_buffer},
+            encase::{self, internal::WriteInto},
+            AsBindGroup, AsBindGroupError, BindGroupEntry, BindGroupLayout, BindGroupLayoutEntry,
+            BindingType, Buffer, BufferBindingType, BufferDescriptor, BufferInitDescriptor,
+            BufferUsages, CachedRenderPipelineId, ColorTargetState, ColorWrites, Extent3d,
+            FragmentState, IntoBinding, MultisampleState, Operations, OwnedBindingResource,
+            PipelineCache, PrimitiveState, RenderPassColorAttachment, RenderPassDescriptor,
+            RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor, ShaderRef,
+            ShaderSize, ShaderStages, ShaderType, StorageTextureAccess, Texture, TextureDescriptor,
+            TextureDimension, TextureFormat, TextureSampleType, TextureUsages, TextureView,
+            TextureViewDescriptor, TextureViewDimension, UniformBuffer, UnpreparedBindGroup,
+            VertexState,
         },
-        renderer::{RenderContext, RenderDevice},
-        texture::GpuImage,
+        renderer::{RenderContext, RenderDevice, RenderQueue},
         MainWorld, RenderApp,
-    }
+    },
 };
-use strum::IntoEnumIterator;
-use strum_macros::EnumIter;
-
-use crate::mipmaps::{GenerateMips, GenerateMipsMode};
+use strum::{EnumCount, IntoEnumIterator};
+use strum_macros::{EnumCount, EnumIter};
 
 #[derive(Default)]
 pub struct ProceduralMaterialPlugin<Settings> {
     _pd: PhantomData<Settings>,
 }
 
-impl<Settings> Plugin for ProceduralMaterialPlugin<Settings>
-where
-    Settings: ExtractComponent + ShaderType + WriteInto + Clone + Default + ProceduralMaterial,
-{
+impl<Settings: ProceduralMaterial> Plugin for ProceduralMaterialPlugin<Settings> {
     fn build(&self, app: &mut App) {
-        app.add_plugins((
-            ExtractComponentPlugin::<MaterialPrivateTextures>::default(),
-            ExtractComponentPlugin::<Settings>::default(),
-            UniformComponentPlugin::<Settings>::default(),
-        ))
-        .add_systems(PostUpdate, init_textures::<Settings>)
-        .insert_resource(MaterialSharedTextures::<Settings>::default());
+        app.add_plugins(MaterialPlugin::<
+            ExtendedMaterial<StandardMaterial, ProceduralMaterialExtension>,
+        >::default());
 
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
         };
 
         render_app
-            .add_systems(ExtractSchedule, request_mips::<Settings>)
+            .add_systems(ExtractSchedule, extract::<Settings>)
             .add_render_graph_node::<ProceduralMaterialNode<Settings>>(
                 Core3d,
                 ProceduralMaterialLabel,
@@ -69,208 +60,165 @@ where
     }
 }
 
-#[derive(Default, Clone)]
-pub enum TextureMode {
-    #[default]
-    Shared,
-    Private,
-}
+#[derive(Component, PartialEq, Eq, PartialOrd, Ord)]
+struct EntityIndex(u32);
 
-#[derive(Default, Clone)]
-pub enum TextureUpdate {
-    #[default]
-    Once,
-    EachFrame,
-}
-
-#[derive(EnumIter, Clone, Copy)]
+#[derive(EnumIter, EnumCount, Clone, Copy)]
 pub enum TextureLayer {
     Diffuse,
     Emissive,
-    MetallicRoughness,
+    Metallic,
+    Roughness,
     Normal,
 }
 
 impl TextureLayer {
     fn texture_format(&self) -> TextureFormat {
         match self {
-            TextureLayer::Diffuse => TextureFormat::Rgba8UnormSrgb,
+            TextureLayer::Diffuse => TextureFormat::Rgba8Unorm,
             TextureLayer::Emissive => TextureFormat::Rgba16Float,
-            TextureLayer::MetallicRoughness => TextureFormat::Rgba8Unorm,
+            TextureLayer::Metallic => TextureFormat::R8Unorm,
+            TextureLayer::Roughness => TextureFormat::R8Unorm,
             TextureLayer::Normal => TextureFormat::Rgba8Unorm,
         }
     }
 }
 
-#[derive(Default, Clone)]
-struct Textures {
-    diffuse: Handle<Image>,
-    emissive: Handle<Image>,
-    metallic_roughness: Handle<Image>,
-    normal: Handle<Image>,
-}
-
-impl Textures {
-    fn get(&self, layer: TextureLayer) -> Handle<Image> {
-        match layer {
-            TextureLayer::Diffuse => self.diffuse.clone_weak(),
-            TextureLayer::Emissive => self.emissive.clone_weak(),
-            TextureLayer::MetallicRoughness => self.metallic_roughness.clone_weak(),
-            TextureLayer::Normal => self.normal.clone_weak(),
-        }
-    }
-
-    fn get_mut(&mut self, layer: TextureLayer) -> &mut Handle<Image> {
-        match layer {
-            TextureLayer::Diffuse => &mut self.diffuse,
-            TextureLayer::Emissive => &mut self.emissive,
-            TextureLayer::MetallicRoughness => &mut self.metallic_roughness,
-            TextureLayer::Normal => &mut self.normal,
-        }
-    }
-}
-
-#[derive(Component, ExtractComponent, Clone)]
-struct MaterialPrivateTextures {
-    mips_requested: bool,
-    textures: Textures,
-}
-
-#[derive(Resource, Default)]
-struct MaterialSharedTextures<Settings: Component> {
-    mips_requested: bool,
-    textures: Textures,
-    _pd: PhantomData<Settings>,
-}
-
-#[derive(Default)]
-pub struct TextureDef {
-    pub mode: TextureMode,
-    pub update: TextureUpdate,
-}
-
-pub trait ProceduralMaterial {
+pub trait ProceduralMaterial:
+    Component + ShaderType + ShaderSize + WriteInto + Clone + Default
+{
     fn shader() -> &'static str;
     fn size() -> (u32, u32);
-    fn texture_def(_: TextureLayer) -> TextureDef {
-        TextureDef::default()
-    }
 }
 
-fn init_textures<Settings: Component + ProceduralMaterial>(
+fn extract<Settings: ProceduralMaterial>(
     mut commands: Commands,
-    mut images: ResMut<Assets<Image>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut shared_textures: ResMut<MaterialSharedTextures<Settings>>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    query: Query<(Entity, &MeshMaterial3d<StandardMaterial>, Option<&Mesh3d>), Added<Settings>>,
-) {
-    let size = {
-        let (width, height) = Settings::size();
-        Extent3d {
-            width,
-            height,
-            ..Default::default()
-        }
-    };
-
-    let private_image = |format: TextureFormat| {
-        println!("gen img");
-        let mut img = Image::new_fill(
-            size,
-            TextureDimension::D2,
-            &vec![0; format.pixel_size()],
-            format,
-            RenderAssetUsages::default(),
-        );
-        img.texture_descriptor.usage = TextureUsages::TEXTURE_BINDING
-            | TextureUsages::COPY_DST
-            | TextureUsages::RENDER_ATTACHMENT;
-        img
-    };
-
-    let mut image = |layer| match Settings::texture_def(layer).mode {
-        TextureMode::Private => images.add(private_image(layer.texture_format())),
-        TextureMode::Shared => {
-            let handle = shared_textures.textures.get_mut(layer);
-            if handle.id() == AssetId::default() {
-                *handle = images.add(private_image(layer.texture_format()));
-            }
-            handle.clone()
-        }
-    };
-
-    for (e, material, mesh) in &query {
-        let diffuse = image(TextureLayer::Diffuse);
-        let emissive = image(TextureLayer::Emissive);
-        let metallic_roughness = image(TextureLayer::MetallicRoughness);
-        let normal = image(TextureLayer::Normal);
-
-        let mat = materials.get_mut(material).unwrap();
-        // mat.unlit = true;
-        mat.base_color = Color::WHITE;
-        mat.base_color_texture = Some(diffuse.clone_weak());
-        mat.emissive = Color::WHITE.to_linear();
-        mat.emissive_texture = Some(emissive.clone_weak());
-        mat.perceptual_roughness = 1.0;
-        mat.metallic = 1.0;
-        mat.metallic_roughness_texture = Some(metallic_roughness.clone_weak());
-        mat.normal_map_texture = Some(normal.clone_weak());
-
-        commands.entity(e).insert(MaterialPrivateTextures {
-            mips_requested: false,
-            textures: Textures {
-                diffuse,
-                emissive,
-                metallic_roughness,
-                normal,
-            },
-        });
-
-        if let Some(mesh) = mesh {
-            meshes.get_mut(mesh).unwrap().generate_tangents().unwrap();
-        }
-    }
-}
-
-fn request_mips<Settings: Component + ProceduralMaterial>(
     mut main_world: ResMut<MainWorld>,
-    proc_mat_pipeline: Res<ProceduralMaterialPipeline<Settings>>,
-    pipeline_cache: Res<PipelineCache>,
+    render_device: Res<RenderDevice>,
+    render_queue: Res<RenderQueue>,
+    buffer: Option<Res<ProceduralMaterialBufferRes<Settings>>>,
+    mut entity_index: Local<u32>,
+    mut invalidated: Local<bool>,
 ) {
-    let Some(CachedPipelineState::Ok(Pipeline::RenderPipeline(_))) = pipeline_cache
-        .pipelines()
-        .nth(proc_mat_pipeline.main_pipeline_id.id())
-        .map(|cached| &cached.state)
-    else {
-        return;
-    };
+    let added = main_world
+        .query_filtered::<(Entity, &Mesh3d), (With<Settings>, Without<EntityIndex>)>()
+        .iter(&main_world)
+        .map(|(e, m)| (e, m.clone_weak()))
+        .collect::<Vec<_>>();
 
-    let mut generate_mips = vec![];
-
-    let mut mat_shared = main_world.resource_mut::<MaterialSharedTextures<Settings>>();
-    if !mat_shared.mips_requested {
-        generate_mips.extend(TextureLayer::iter().map(|l| (l.clone(), mat_shared.textures.get(l))));
-        mat_shared.mips_requested = true;
+    for (entity, _) in added.iter() {
+        main_world
+            .entity_mut(*entity)
+            .insert(EntityIndex(*entity_index));
+        *entity_index += 1;
     }
 
-    main_world
-        .query::<&mut MaterialPrivateTextures>()
-        .iter_mut(&mut main_world)
-        .filter(|t| !t.mips_requested)
-        .for_each(|mut mat| {
-            generate_mips.extend(TextureLayer::iter().map(|l| (l.clone(), mat.textures.get(l))));
-            mat.mips_requested = true;
-        });
+    let mut meshes = main_world.resource_mut::<Assets<Mesh>>();
+    for (_, mesh) in &added {
+        meshes.get_mut(mesh).unwrap().generate_tangents().unwrap();
+    }
 
-    for (layer, handle) in generate_mips {
-        main_world.spawn(GenerateMips::new(
-            handle.id(),
-            match Settings::texture_def(layer).update {
-                TextureUpdate::Once => GenerateMipsMode::Once,
-                TextureUpdate::EachFrame => GenerateMipsMode::EachFrame,
+    let sorted = main_world
+        .query_filtered::<(Entity, &EntityIndex, &Settings), With<Mesh3d>>()
+        .iter(&main_world)
+        .map(|(e, i, s)| (i, (e, s.clone())))
+        .collect::<BTreeMap<_, _>>()
+        .into_values()
+        .collect::<Vec<_>>();
+    let data = sorted.iter().map(|(_, s)| s.clone()).collect::<Vec<_>>();
+
+    if !added.is_empty() {
+        *invalidated = true;
+        return;
+    }
+
+    if !*invalidated {
+        if let Some(buffer) = buffer {
+            let mut wrapper = encase::StorageBuffer::<Vec<u8>>::new(Vec::with_capacity(
+                data.size().get() as usize,
+            ));
+            wrapper.write(&data).unwrap();
+            render_queue.write_buffer(&buffer.buffer, 0, &wrapper.into_inner());
+        }
+
+        return;
+    }
+
+    *invalidated = false;
+
+    commands.insert_resource(ProceduralMaterialBufferRes::<Settings> {
+        buffer: render_device.create_buffer(&BufferDescriptor {
+            label: None,
+            size: data.size().get(),
+            usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        }),
+        _pd: PhantomData::default(),
+    });
+
+    let proc_mat_texture = |layer: TextureLayer| {
+        let (width, height) = <Settings as ProceduralMaterial>::size();
+        let sampler = render_device.create_sampler(&SamplerDescriptor::default());
+        let texture = render_device.create_texture(&TextureDescriptor {
+            label: None,
+            size: Extent3d {
+                width,
+                height,
+                depth_or_array_layers: sorted.len() as u32,
             },
-        ));
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: layer.texture_format(),
+            usage: TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING,
+            view_formats: &vec![],
+        });
+        let view = texture.create_view(&TextureViewDescriptor::default());
+        ProceduralMaterialTexture {
+            sampler,
+            texture,
+            view,
+        }
+    };
+
+    let textures = ProceduralMaterialTextures {
+        color: proc_mat_texture(TextureLayer::Diffuse),
+        emissive: proc_mat_texture(TextureLayer::Emissive),
+        metallic: proc_mat_texture(TextureLayer::Metallic),
+        roughness: proc_mat_texture(TextureLayer::Roughness),
+        normal: proc_mat_texture(TextureLayer::Normal),
+    };
+
+    commands.insert_resource(ProceduralMaterialTexturesRes::<Settings> {
+        textures: textures.clone(),
+        _pd: PhantomData::default(),
+    });
+
+    let mut materials = main_world
+        .resource_mut::<Assets<ExtendedMaterial<StandardMaterial, ProceduralMaterialExtension>>>();
+
+    let materials = sorted
+        .iter()
+        .enumerate()
+        .map(|(i, _)| {
+            materials.add(ExtendedMaterial {
+                base: StandardMaterial {
+                    alpha_mode: AlphaMode::Blend,
+                    ..Default::default()
+                },
+                extension: ProceduralMaterialExtension {
+                    textures: textures.clone(),
+                    index: i as u32,
+                },
+            })
+        })
+        .collect::<Vec<_>>();
+
+    for ((entity, _), material) in sorted.iter().zip(materials) {
+        main_world
+            .entity_mut(*entity)
+            .remove::<MeshMaterial3d<StandardMaterial>>()
+            .insert(MeshMaterial3d(material));
     }
 }
 
@@ -278,22 +226,11 @@ fn request_mips<Settings: Component + ProceduralMaterial>(
 struct ProceduralMaterialLabel;
 
 #[derive(Default)]
-struct ProceduralMaterialNode<Settings: Default> {
-    entities: Vec<Entity>,
+struct ProceduralMaterialNode<Settings: ProceduralMaterial> {
     _pd: PhantomData<Settings>,
 }
 
-impl<Settings> Node for ProceduralMaterialNode<Settings>
-where
-    Settings: Component + ShaderType + WriteInto + Default,
-{
-    fn update(&mut self, world: &mut World) {
-        self.entities = world
-            .query_filtered::<Entity, With<Settings>>()
-            .iter(&world)
-            .collect();
-    }
-
+impl<Settings: ProceduralMaterial> Node for ProceduralMaterialNode<Settings> {
     fn run<'w>(
         &self,
         _: &mut RenderGraphContext,
@@ -302,72 +239,66 @@ where
     ) -> Result<(), NodeRunError> {
         let proc_mat_pipeline = world.resource::<ProceduralMaterialPipeline<Settings>>();
         let pipeline_cache = world.resource::<PipelineCache>();
-        let images = world.resource::<RenderAssets<GpuImage>>();
-        let Some(main_pipeline) =
-            pipeline_cache.get_render_pipeline(proc_mat_pipeline.main_pipeline_id)
+
+        let Some(main_pipeline) = pipeline_cache.get_render_pipeline(proc_mat_pipeline.pipeline_id)
         else {
             return Ok(());
         };
 
-        let settings_uniforms = world.resource::<ComponentUniforms<Settings>>();
-        let Some(settings_binding) = settings_uniforms.uniforms().binding() else {
+        let Some(buffer) = world.get_resource::<ProceduralMaterialBufferRes<Settings>>() else {
             return Ok(());
         };
 
+        let Some(textures) = world.get_resource::<ProceduralMaterialTexturesRes<Settings>>() else {
+            return Ok(());
+        };
+
+        let textures = &textures.textures;
+
         let main_bind_group = render_context.render_device().create_bind_group(
             "proc_mat_bind_group",
-            &proc_mat_pipeline.main_layout,
-            &BindGroupEntries::sequential((settings_binding.clone(),)),
+            &proc_mat_pipeline.layout,
+            &TextureLayer::iter()
+                .enumerate()
+                .map(|(i, l)| BindGroupEntry {
+                    binding: i as u32,
+                    resource: textures.get(l).view.into_binding(),
+                })
+                .chain([
+                    BindGroupEntry {
+                        binding: TextureLayer::COUNT as u32,
+                        resource: proc_mat_pipeline.globals.binding().unwrap(),
+                    },
+                    BindGroupEntry {
+                        binding: 100,
+                        resource: buffer.buffer.as_entire_binding(),
+                    },
+                ])
+                .collect::<Vec<_>>(),
         );
 
-        for entity in self.entities.clone() {
-            let Some(material) = world.get::<MaterialPrivateTextures>(entity) else {
-                continue;
-            };
-            let Some(index) = world
-                .get::<DynamicUniformIndex<Settings>>(entity)
-                .map(|i| i.index())
-            else {
-                continue;
-            };
+        let mut render_pass = render_context.begin_tracked_render_pass(RenderPassDescriptor {
+            label: Some("proc_mat_pass"),
+            color_attachments: &[Some(RenderPassColorAttachment {
+                view: &proc_mat_pipeline.dummy_texture_view,
+                resolve_target: None,
+                ops: Operations::default(),
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+        });
 
-            let gpu_images = TextureLayer::iter()
-                .map(|l| images.get(&material.textures.get(l)).unwrap())
-                .collect::<Vec<_>>();
-
-            let views = gpu_images
-                .iter()
-                .map(|gpu_image| {
-                    gpu_image.texture.create_view(&TextureViewDescriptor {
-                        base_mip_level: 0,
-                        mip_level_count: Some(1),
-                        ..Default::default()
-                    })
-                })
-                .collect::<Vec<_>>();
-
-            let mut render_pass = render_context.begin_tracked_render_pass(RenderPassDescriptor {
-                label: Some("proc_mat_pass"),
-                color_attachments: views
-                    .iter()
-                    .map(|view| {
-                        Some(RenderPassColorAttachment {
-                            view,
-                            resolve_target: None,
-                            ops: Operations::default(),
-                        })
-                    })
-                    .collect::<Vec<_>>()
-                    .as_slice(),
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-
-            render_pass.set_render_pipeline(main_pipeline);
-            render_pass.set_bind_group(0, &main_bind_group, &[index]);
-            render_pass.draw(0..3, 0..1);
-        }
+        render_pass.set_render_pipeline(main_pipeline);
+        render_pass.set_bind_group(0, &main_bind_group, &[]);
+        render_pass.draw(
+            0..3,
+            0..textures
+                .get(TextureLayer::Diffuse)
+                .texture
+                .size()
+                .depth_or_array_layers,
+        );
 
         Ok(())
     }
@@ -375,43 +306,78 @@ where
 
 #[derive(Resource)]
 struct ProceduralMaterialPipeline<Settings> {
-    main_layout: BindGroupLayout,
-    main_pipeline_id: CachedRenderPipelineId,
+    layout: BindGroupLayout,
+    pipeline_id: CachedRenderPipelineId,
+    dummy_texture_view: TextureView,
+    globals: UniformBuffer<ProceduralMaterialGlobals>,
     _pd: PhantomData<Settings>,
 }
 
-impl<Settings: ShaderType + ProceduralMaterial> FromWorld for ProceduralMaterialPipeline<Settings> {
+impl<Settings: ProceduralMaterial> FromWorld for ProceduralMaterialPipeline<Settings> {
     fn from_world(world: &mut World) -> Self {
         let render_device = world.resource::<RenderDevice>();
+        let render_queue = world.resource::<RenderQueue>();
 
-        let main_layout = render_device.create_bind_group_layout(
+        let layout = render_device.create_bind_group_layout(
             "proc_mat_bind_group_layout",
-            &BindGroupLayoutEntries::sequential(
-                ShaderStages::FRAGMENT,
-                (uniform_buffer::<Settings>(true),),
-            ),
+            TextureLayer::iter()
+                .enumerate()
+                .map(|(i, l)| {
+                    texture_storage_2d_array(l.texture_format(), StorageTextureAccess::WriteOnly)
+                        .build(i as u32, ShaderStages::FRAGMENT)
+                })
+                .chain([
+                    uniform_buffer::<ProceduralMaterialGlobals>(false)
+                        .build(TextureLayer::COUNT as u32, ShaderStages::FRAGMENT),
+                    storage_buffer_read_only::<Settings>(false).build(100, ShaderStages::FRAGMENT),
+                ])
+                .collect::<Vec<_>>()
+                .as_slice(),
         );
-        let main_shader = world.load_asset(Settings::shader());
-        let main_pipeline_id =
+
+        let (width, height) = <Settings as ProceduralMaterial>::size();
+
+        let dummy_texture = render_device.create_texture(&{
+            let mut desc = Image::default().texture_descriptor;
+            desc.size = {
+                Extent3d {
+                    width,
+                    height,
+                    ..Default::default()
+                }
+            };
+            desc.usage = TextureUsages::RENDER_ATTACHMENT;
+            desc
+        });
+        let dummy_texture_view = dummy_texture.create_view(&TextureViewDescriptor::default());
+
+        let mut globals = UniformBuffer::from(ProceduralMaterialGlobals {
+            texture_size: Vec2::new(width as f32, height as f32),
+        });
+        globals.write_buffer(render_device, render_queue);
+
+        let shader = world.load_asset(Settings::shader());
+        let pipeline_id =
             world
                 .resource_mut::<PipelineCache>()
                 .queue_render_pipeline(RenderPipelineDescriptor {
                     label: Some("proc_mat_pipeline".into()),
-                    layout: vec![main_layout.clone()],
-                    vertex: fullscreen_shader_vertex_state(),
+                    layout: vec![layout.clone()],
+                    vertex: VertexState {
+                        shader: shader.clone(),
+                        shader_defs: vec![],
+                        entry_point: "vertex".into(),
+                        buffers: vec![],
+                    },
                     fragment: Some(FragmentState {
-                        shader: main_shader,
+                        shader,
                         shader_defs: vec![],
                         entry_point: "fragment".into(),
-                        targets: TextureLayer::iter()
-                            .map(|l| {
-                                Some(ColorTargetState {
-                                    format: l.texture_format(),
-                                    blend: None,
-                                    write_mask: ColorWrites::ALL,
-                                })
-                            })
-                            .collect(),
+                        targets: vec![Some(ColorTargetState {
+                            format: TextureFormat::bevy_default(),
+                            blend: None,
+                            write_mask: ColorWrites::ALL,
+                        })],
                     }),
                     primitive: PrimitiveState::default(),
                     depth_stencil: None,
@@ -421,9 +387,170 @@ impl<Settings: ShaderType + ProceduralMaterial> FromWorld for ProceduralMaterial
                 });
 
         Self {
-            main_layout,
-            main_pipeline_id,
+            layout,
+            pipeline_id,
+            dummy_texture_view,
+            globals,
             _pd: PhantomData::default(),
         }
+    }
+}
+
+#[derive(ShaderType, Reflect, Debug, Clone, Default)]
+struct ProceduralMaterialGlobals {
+    texture_size: Vec2,
+}
+
+#[derive(Clone)]
+struct ProceduralMaterialTexture {
+    texture: Texture,
+    view: TextureView,
+    sampler: Sampler,
+}
+
+impl ProceduralMaterialTexture {
+    fn to_binding(&self, view: u32, sampler: u32) -> [(u32, OwnedBindingResource); 2] {
+        [
+            (view, OwnedBindingResource::TextureView(self.view.clone())),
+            (sampler, OwnedBindingResource::Sampler(self.sampler.clone())),
+        ]
+    }
+}
+
+#[derive(Clone)]
+struct ProceduralMaterialTextures {
+    color: ProceduralMaterialTexture,
+    emissive: ProceduralMaterialTexture,
+    metallic: ProceduralMaterialTexture,
+    roughness: ProceduralMaterialTexture,
+    normal: ProceduralMaterialTexture,
+}
+
+impl ProceduralMaterialTextures {
+    fn get(&self, layer: TextureLayer) -> &ProceduralMaterialTexture {
+        match layer {
+            TextureLayer::Diffuse => &self.color,
+            TextureLayer::Emissive => &self.emissive,
+            TextureLayer::Metallic => &self.metallic,
+            TextureLayer::Roughness => &self.roughness,
+            TextureLayer::Normal => &self.normal,
+        }
+    }
+}
+
+#[derive(Resource)]
+struct ProceduralMaterialBufferRes<Settings: ProceduralMaterial> {
+    buffer: Buffer,
+    _pd: PhantomData<Settings>,
+}
+
+#[derive(Resource)]
+struct ProceduralMaterialTexturesRes<Settings: ProceduralMaterial> {
+    textures: ProceduralMaterialTextures,
+    _pd: PhantomData<Settings>,
+}
+
+#[derive(Asset, Clone)]
+struct ProceduralMaterialExtension {
+    textures: ProceduralMaterialTextures,
+    index: u32,
+}
+
+impl AsBindGroup for ProceduralMaterialExtension {
+    type Data = ();
+    type Param = ();
+
+    fn label() -> Option<&'static str> {
+        Some("ProceduralMaterialExtension")
+    }
+
+    fn bind_group_layout_entries(_: &RenderDevice) -> Vec<BindGroupLayoutEntry>
+    where
+        Self: Sized,
+    {
+        let binding = 100;
+        TextureLayer::iter()
+            .enumerate()
+            .map(|(i, l)| {
+                [
+                    BindGroupLayoutEntry {
+                        binding: binding + i as u32 * 2,
+                        visibility: ShaderStages::all(),
+                        ty: BindingType::Texture {
+                            sample_type: TextureSampleType::Float { filterable: false },
+                            view_dimension: TextureViewDimension::D2Array,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    BindGroupLayoutEntry {
+                        binding: binding + i as u32 * 2 + 1,
+                        visibility: ShaderStages::all(),
+                        ty: BindingType::Sampler(SamplerBindingType::NonFiltering),
+                        count: None,
+                    },
+                ]
+            })
+            .flatten()
+            .chain([BindGroupLayoutEntry {
+                binding: 150,
+                visibility: ShaderStages::all(),
+                ty: BindingType::Buffer {
+                    ty: BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: Some(<u32 as ShaderType>::min_size()),
+                },
+                count: None,
+            }])
+            .collect()
+    }
+
+    fn unprepared_bind_group(
+        &self,
+        _: &BindGroupLayout,
+        render_device: &RenderDevice,
+        _: &mut bevy::ecs::system::SystemParamItem<'_, '_, Self::Param>,
+    ) -> Result<UnpreparedBindGroup<Self::Data>, AsBindGroupError> {
+        let binding = 100;
+        let mut buffer = encase::UniformBuffer::new(Vec::new());
+        buffer.write(&self.index).unwrap();
+        Ok(UnpreparedBindGroup {
+            bindings: TextureLayer::iter()
+                .enumerate()
+                .map(|(i, l)| {
+                    self.textures
+                        .get(l)
+                        .to_binding(binding + i as u32 * 2, binding + i as u32 * 2 + 1)
+                })
+                .flatten()
+                .chain([(
+                    150,
+                    OwnedBindingResource::Buffer(render_device.create_buffer_with_data(
+                        &BufferInitDescriptor {
+                            label: None,
+                            contents: buffer.as_ref(),
+                            usage: BufferUsages::COPY_DST | BufferUsages::UNIFORM,
+                        },
+                    )),
+                )])
+                .collect(),
+            data: (),
+        })
+    }
+}
+
+impl TypePath for ProceduralMaterialExtension {
+    fn type_path() -> &'static str {
+        "procedural_material_extension"
+    }
+
+    fn short_type_path() -> &'static str {
+        "proc_mat_ext"
+    }
+}
+
+impl MaterialExtension for ProceduralMaterialExtension {
+    fn fragment_shader() -> ShaderRef {
+        "procedural.wgsl".into()
     }
 }
