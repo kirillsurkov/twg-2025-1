@@ -47,10 +47,10 @@ impl Plugin for RoomPlugin {
     }
 }
 
-#[derive(Component, Reflect)]
-enum LoadingState {
-    Materials,
-    Done,
+#[derive(Component)]
+pub struct Room {
+    pub x: i32,
+    pub y: i32,
 }
 
 #[derive(Component, Clone, Reflect)]
@@ -63,10 +63,10 @@ pub enum RoomState {
     Destruct,
 }
 
-#[derive(Component)]
-pub struct Room {
-    pub x: i32,
-    pub y: i32,
+#[derive(Component, Reflect)]
+enum LoadingState {
+    Materials,
+    Done,
 }
 
 fn init_room(
@@ -266,7 +266,7 @@ impl ProceduralMaterial for RoomFloorMaterial {
     }
 
     fn size() -> (u32, u32) {
-        (120, 120)
+        (36, 36)
     }
 }
 
