@@ -162,7 +162,7 @@ fn extract<Settings: ProceduralMaterial>(
                 size: Extent3d {
                     width,
                     height,
-                    depth_or_array_layers: sorted.len() as u32,
+                    depth_or_array_layers: sorted.len().max(2) as u32,
                 },
                 mip_level_count: 1,
                 sample_count: 1,
@@ -412,7 +412,7 @@ struct ProceduralMaterialGlobals {
     texture_size: Vec2,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct ProceduralMaterialTexture {
     texture: Texture,
     view: TextureView,
@@ -428,7 +428,7 @@ impl ProceduralMaterialTexture {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct ProceduralMaterialTextures {
     color: ProceduralMaterialTexture,
     emissive: ProceduralMaterialTexture,
