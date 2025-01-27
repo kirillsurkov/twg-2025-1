@@ -12,6 +12,8 @@ impl Plugin for GameCursorPlugin {
 pub struct GameCursor {
     pub x: i32,
     pub y: i32,
+    pub fx: f32,
+    pub fy: f32,
     pub just_pressed: bool,
 }
 
@@ -36,10 +38,12 @@ fn update_cursor(
         return;
     };
 
-    let pos = ((ray.get_point(distance) + 2.01 * 0.5) / 2.01).floor().xy();
+    let pos = ray.get_point(distance);
     commands.insert_resource(GameCursor {
-        x: pos.x as i32,
-        y: pos.y as i32,
+        x: ((pos.x + 2.01 * 0.5) / 2.01).floor() as i32,
+        y: ((pos.y + 2.01 * 0.5) / 2.01).floor() as i32,
+        fx: pos.x,
+        fy: pos.y,
         just_pressed: mouse.just_pressed(MouseButton::Left),
     });
 }

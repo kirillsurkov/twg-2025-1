@@ -16,7 +16,7 @@ use crate::{
     },
 };
 
-use super::PlayerState;
+use super::{PlayerState, RoomLocations};
 
 pub struct RoomPlugin;
 
@@ -48,12 +48,12 @@ impl Plugin for RoomPlugin {
 }
 
 #[derive(Component)]
-pub struct Room {
-    pub x: i32,
-    pub y: i32,
+pub enum Room {
+    Fixed(i32, i32),
+    Floating(f32, f32),
 }
 
-#[derive(Component, Clone, Reflect)]
+#[derive(Component, Clone, Reflect, PartialEq)]
 pub enum RoomState {
     Idle,
     PlayerSelect,
@@ -107,7 +107,11 @@ fn init_room(
 
 fn update_room_pos(mut rooms: Query<(&Room, &mut Transform)>) {
     for (room, mut transform) in rooms.iter_mut() {
-        *transform = Transform::from_xyz(room.x as f32 * 2.01, room.y as f32 * 2.01, 0.0);
+        let (x, y, z) = match *room {
+            Room::Fixed(x, y) => (x as f32 * 2.01, y as f32 * 2.01, 0.0),
+            Room::Floating(x, y) => (x, y, 0.1),
+        };
+        *transform = Transform::from_xyz(x, y, z);
     }
 }
 
@@ -116,6 +120,7 @@ struct RoomBuilderEntity(Entity);
 
 fn room_builder(
     mut commands: Commands,
+    mut room_locations: ResMut<RoomLocations>,
     mut player_state: ResMut<PlayerState>,
     mut rooms: Query<(&mut Room, &mut RoomState)>,
     game_cursor: Res<GameCursor>,
@@ -133,10 +138,7 @@ fn room_builder(
     let Some(entity) = room_builder_entity.map(|e| e.0) else {
         let entity = commands
             .spawn((
-                Room {
-                    x: game_cursor.x,
-                    y: game_cursor.y,
-                },
+                Room::Fixed(game_cursor.x, game_cursor.y),
                 RoomState::SelectedForConstruction,
             ))
             .id();
@@ -145,13 +147,28 @@ fn room_builder(
     };
 
     let (mut room, mut room_state) = rooms.get_mut(entity).unwrap();
-    room.x = game_cursor.x;
-    room.y = game_cursor.y;
 
-    if game_cursor.just_pressed {
+    let available = room_locations
+        .available
+        .contains(&IVec2::new(game_cursor.x, game_cursor.y));
+
+    if available {
+        *room = Room::Fixed(game_cursor.x, game_cursor.y);
+        if *room_state != RoomState::SelectedForConstruction {
+            *room_state = RoomState::SelectedForConstruction;
+        }
+    } else {
+        *room = Room::Floating(game_cursor.fx, game_cursor.fy);
+        if *room_state != RoomState::SelectedForDestruction {
+            *room_state = RoomState::SelectedForDestruction;
+        }
+    }
+
+    if available && game_cursor.just_pressed {
         *room_state = RoomState::Construct(time.elapsed_secs());
         *player_state = PlayerState::Idle;
         commands.remove_resource::<RoomBuilderEntity>();
+        room_locations.insert_around(game_cursor.x, game_cursor.y);
     }
 }
 
