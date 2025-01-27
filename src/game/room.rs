@@ -213,7 +213,7 @@ fn update_room_state(mut rooms: Query<(&mut RoomState, &LoadingState)>, time: Re
     }
 }
 
-#[derive(Component, ExtractComponent, ShaderType, Default, Clone, Copy)]
+#[derive(Component, ExtractComponent, ShaderType, Clone, Copy)]
 struct RoomFloorMaterial {
     time: f32,
     seed: f32,

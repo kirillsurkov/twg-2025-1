@@ -27,9 +27,16 @@ use bevy::{
 use strum::{EnumCount, IntoEnumIterator};
 use strum_macros::{EnumCount, EnumIter};
 
-#[derive(Default)]
-pub struct ProceduralMaterialPlugin<Settings> {
+pub struct ProceduralMaterialPlugin<Settings: ProceduralMaterial> {
     _pd: PhantomData<Settings>,
+}
+
+impl<Settings: ProceduralMaterial> Default for ProceduralMaterialPlugin<Settings> {
+    fn default() -> Self {
+        Self {
+            _pd: PhantomData::default(),
+        }
+    }
 }
 
 impl<Settings: ProceduralMaterial> Plugin for ProceduralMaterialPlugin<Settings> {
@@ -84,9 +91,7 @@ impl TextureLayer {
     }
 }
 
-pub trait ProceduralMaterial:
-    Component + ShaderType + ShaderSize + WriteInto + Clone + Default
-{
+pub trait ProceduralMaterial: Component + ShaderType + ShaderSize + WriteInto + Clone {
     fn shader() -> &'static str;
     fn size() -> (u32, u32);
 }
@@ -225,9 +230,16 @@ fn extract<Settings: ProceduralMaterial>(
 #[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
 struct ProceduralMaterialLabel;
 
-#[derive(Default)]
 struct ProceduralMaterialNode<Settings: ProceduralMaterial> {
     _pd: PhantomData<Settings>,
+}
+
+impl<Settings: ProceduralMaterial> Default for ProceduralMaterialNode<Settings> {
+    fn default() -> Self {
+        Self {
+            _pd: PhantomData::default(),
+        }
+    }
 }
 
 impl<Settings: ProceduralMaterial> Node for ProceduralMaterialNode<Settings> {

@@ -2,9 +2,16 @@ use std::marker::PhantomData;
 
 use bevy::prelude::*;
 
-#[derive(Default)]
 pub struct ModifyMaterialPlugin<M> {
     _pd: PhantomData<M>,
+}
+
+impl<M> Default for ModifyMaterialPlugin<M> {
+    fn default() -> Self {
+        Self {
+            _pd: PhantomData::default(),
+        }
+    }
 }
 
 impl<M: Material> Plugin for ModifyMaterialPlugin<M> {
