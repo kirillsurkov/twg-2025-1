@@ -17,14 +17,14 @@ impl<MFrom: Material, MTo: Material> Default for ModifyMaterialPlugin<MFrom, MTo
 impl<MFrom: Material, MTo: Material> Plugin for ModifyMaterialPlugin<MFrom, MTo> {
     fn build(&self, app: &mut App) {
         app.add_systems(
-            PreUpdate,
+            PostUpdate,
             (
+                restore_original_materials::<MFrom, MTo>,
                 prepare_materials::<MFrom, MTo>,
                 apply_new_materials::<MFrom, MTo>,
             )
                 .chain(),
         )
-        .add_systems(PostUpdate, restore_original_materials::<MFrom, MTo>)
         .register_type::<OriginalMaterial<MFrom>>();
     }
 }
@@ -106,9 +106,11 @@ fn restore_original_materials<MFrom: Material, MTo: Material>(
             entity.remove::<Modified>();
         }
         for entity in Iterator::chain(children.iter_descendants(entity), [entity]) {
-            if let Ok(original_material) = restores.get(entity) {
-                commands
-                    .entity(entity)
+            let Some(mut entity) = commands.get_entity(entity) else {
+                continue;
+            };
+            if let Ok(original_material) = restores.get(entity.id()) {
+                entity
                     .remove::<MeshMaterial3d<MTo>>()
                     .insert(original_material.0.clone())
                     .remove::<OriginalMaterial<MFrom>>();
