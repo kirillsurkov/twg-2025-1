@@ -20,7 +20,7 @@ fn main() {
         .add_plugins(FpsOverlayPlugin::default())
         .add_plugins(NoisyShaderPlugin)
         .add_plugins(UpdateMaterialTexturesPlugin::<StandardMaterial>::default())
-        .add_plugins(ModifyMaterialPlugin::<StandardMaterial>::default())
+        .add_plugins(ModifyMaterialPlugin::<StandardMaterial, StandardMaterial>::default())
         // .add_plugins(MipmapGeneratorPlugin)
         .add_plugins(GamePlugin)
         .insert_resource(AmbientLight::NONE)

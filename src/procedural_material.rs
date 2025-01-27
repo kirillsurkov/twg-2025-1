@@ -27,6 +27,8 @@ use bevy::{
 use strum::{EnumCount, IntoEnumIterator};
 use strum_macros::{EnumCount, EnumIter};
 
+use crate::modify_material::{ModifyMaterialPlugin, OriginalMaterial};
+
 pub struct ProceduralMaterialPlugin<Settings: ProceduralMaterial> {
     _pd: PhantomData<Settings>,
 }
@@ -41,9 +43,11 @@ impl<Settings: ProceduralMaterial> Default for ProceduralMaterialPlugin<Settings
 
 impl<Settings: ProceduralMaterial> Plugin for ProceduralMaterialPlugin<Settings> {
     fn build(&self, app: &mut App) {
-        app.add_plugins(MaterialPlugin::<
-            ExtendedMaterial<StandardMaterial, ProceduralMaterialExtension>,
-        >::default());
+        app.add_plugins(MaterialPlugin::<ExtendedProceduralMaterial>::default())
+            .add_plugins(ModifyMaterialPlugin::<
+                ExtendedProceduralMaterial,
+                StandardMaterial,
+            >::default());
 
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
@@ -103,7 +107,6 @@ fn extract<Settings: ProceduralMaterial>(
     render_queue: Res<RenderQueue>,
     buffer: Option<Res<ProceduralMaterialBufferRes<Settings>>>,
     mut entity_index: Local<u32>,
-    mut invalidated: Local<bool>,
 ) {
     let added = main_world
         .query_filtered::<(Entity, &Mesh3d), (With<Settings>, Without<EntityIndex>)>()
@@ -132,12 +135,7 @@ fn extract<Settings: ProceduralMaterial>(
         .collect::<Vec<_>>();
     let data = sorted.iter().map(|(_, s)| s.clone()).collect::<Vec<_>>();
 
-    if !added.is_empty() {
-        *invalidated = true;
-        return;
-    }
-
-    if !*invalidated {
+    if added.is_empty() {
         if let Some(buffer) = buffer {
             let mut wrapper = encase::StorageBuffer::<Vec<u8>>::new(Vec::with_capacity(
                 data.size().get() as usize,
@@ -145,85 +143,86 @@ fn extract<Settings: ProceduralMaterial>(
             wrapper.write(&data).unwrap();
             render_queue.write_buffer(&buffer.buffer, 0, &wrapper.into_inner());
         }
-
-        return;
-    }
-
-    *invalidated = false;
-
-    commands.insert_resource(ProceduralMaterialBufferRes::<Settings> {
-        buffer: render_device.create_buffer(&BufferDescriptor {
-            label: None,
-            size: data.size().get(),
-            usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        }),
-        _pd: PhantomData::default(),
-    });
-
-    let proc_mat_texture = |layer: TextureLayer| {
-        let (width, height) = <Settings as ProceduralMaterial>::size();
-        let sampler = render_device.create_sampler(&SamplerDescriptor::default());
-        let texture = render_device.create_texture(&TextureDescriptor {
-            label: None,
-            size: Extent3d {
-                width,
-                height,
-                depth_or_array_layers: sorted.len() as u32,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: TextureDimension::D2,
-            format: layer.texture_format(),
-            usage: TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING,
-            view_formats: &vec![],
+    } else {
+        commands.insert_resource(ProceduralMaterialBufferRes::<Settings> {
+            buffer: render_device.create_buffer(&BufferDescriptor {
+                label: None,
+                size: data.size().get(),
+                usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }),
+            _pd: PhantomData::default(),
         });
-        let view = texture.create_view(&TextureViewDescriptor::default());
-        ProceduralMaterialTexture {
-            sampler,
-            texture,
-            view,
-        }
-    };
 
-    let textures = ProceduralMaterialTextures {
-        color: proc_mat_texture(TextureLayer::Diffuse),
-        emissive: proc_mat_texture(TextureLayer::Emissive),
-        metallic: proc_mat_texture(TextureLayer::Metallic),
-        roughness: proc_mat_texture(TextureLayer::Roughness),
-        normal: proc_mat_texture(TextureLayer::Normal),
-    };
-
-    commands.insert_resource(ProceduralMaterialTexturesRes::<Settings> {
-        textures: textures.clone(),
-        _pd: PhantomData::default(),
-    });
-
-    let mut materials = main_world
-        .resource_mut::<Assets<ExtendedMaterial<StandardMaterial, ProceduralMaterialExtension>>>();
-
-    let materials = sorted
-        .iter()
-        .enumerate()
-        .map(|(i, _)| {
-            materials.add(ExtendedMaterial {
-                base: StandardMaterial {
-                    alpha_mode: AlphaMode::Blend,
-                    ..Default::default()
+        let proc_mat_texture = |layer: TextureLayer| {
+            let (width, height) = <Settings as ProceduralMaterial>::size();
+            let sampler = render_device.create_sampler(&SamplerDescriptor::default());
+            let texture = render_device.create_texture(&TextureDescriptor {
+                label: None,
+                size: Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: sorted.len() as u32,
                 },
-                extension: ProceduralMaterialExtension {
-                    textures: textures.clone(),
-                    index: i as u32,
-                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: TextureDimension::D2,
+                format: layer.texture_format(),
+                usage: TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING,
+                view_formats: &vec![],
+            });
+            let view = texture.create_view(&TextureViewDescriptor::default());
+            ProceduralMaterialTexture {
+                sampler,
+                texture,
+                view,
+            }
+        };
+
+        let textures = ProceduralMaterialTextures {
+            color: proc_mat_texture(TextureLayer::Diffuse),
+            emissive: proc_mat_texture(TextureLayer::Emissive),
+            metallic: proc_mat_texture(TextureLayer::Metallic),
+            roughness: proc_mat_texture(TextureLayer::Roughness),
+            normal: proc_mat_texture(TextureLayer::Normal),
+        };
+
+        commands.insert_resource(ProceduralMaterialTexturesRes::<Settings> {
+            textures: textures.clone(),
+            _pd: PhantomData::default(),
+        });
+
+        let mut materials = main_world.resource_mut::<Assets<ExtendedProceduralMaterial>>();
+
+        let materials = sorted
+            .iter()
+            .enumerate()
+            .map(|(i, _)| {
+                materials.add(ExtendedMaterial {
+                    base: StandardMaterial {
+                        alpha_mode: AlphaMode::Blend,
+                        ..Default::default()
+                    },
+                    extension: ProceduralMaterialExtension {
+                        textures: textures.clone(),
+                        index: i as u32,
+                    },
+                })
             })
-        })
-        .collect::<Vec<_>>();
+            .collect::<Vec<_>>();
 
-    for ((entity, _), material) in sorted.iter().zip(materials) {
-        main_world
-            .entity_mut(*entity)
-            .remove::<MeshMaterial3d<StandardMaterial>>()
-            .insert(MeshMaterial3d(material));
+        for ((entity, _), material) in sorted.iter().zip(materials) {
+            let mut entity = main_world.entity_mut(*entity);
+            if entity.contains::<OriginalMaterial<ExtendedProceduralMaterial>>() {
+                entity
+                    .remove::<OriginalMaterial<ExtendedProceduralMaterial>>()
+                    .insert(OriginalMaterial(MeshMaterial3d(material)));
+            } else {
+                entity
+                    .remove::<MeshMaterial3d<ExtendedProceduralMaterial>>()
+                    .insert(MeshMaterial3d(material));
+            }
+        }
     }
 }
 
@@ -463,10 +462,13 @@ struct ProceduralMaterialTexturesRes<Settings: ProceduralMaterial> {
 }
 
 #[derive(Asset, Clone)]
-struct ProceduralMaterialExtension {
+pub struct ProceduralMaterialExtension {
     textures: ProceduralMaterialTextures,
     index: u32,
 }
+
+pub type ExtendedProceduralMaterial =
+    ExtendedMaterial<StandardMaterial, ProceduralMaterialExtension>;
 
 impl AsBindGroup for ProceduralMaterialExtension {
     type Data = ();

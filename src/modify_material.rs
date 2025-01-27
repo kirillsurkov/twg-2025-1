@@ -2,11 +2,11 @@ use std::marker::PhantomData;
 
 use bevy::prelude::*;
 
-pub struct ModifyMaterialPlugin<M> {
-    _pd: PhantomData<M>,
+pub struct ModifyMaterialPlugin<MFrom: Material, MTo: Material> {
+    _pd: PhantomData<(MFrom, MTo)>,
 }
 
-impl<M> Default for ModifyMaterialPlugin<M> {
+impl<MFrom: Material, MTo: Material> Default for ModifyMaterialPlugin<MFrom, MTo> {
     fn default() -> Self {
         Self {
             _pd: PhantomData::default(),
@@ -14,28 +14,28 @@ impl<M> Default for ModifyMaterialPlugin<M> {
     }
 }
 
-impl<M: Material> Plugin for ModifyMaterialPlugin<M> {
+impl<MFrom: Material, MTo: Material> Plugin for ModifyMaterialPlugin<MFrom, MTo> {
     fn build(&self, app: &mut App) {
         app.add_systems(
-            Last,
+            PreUpdate,
             (
-                (prepare_materials::<M>, apply_new_materials::<M>).chain(),
-                restore_original_materials::<M>,
-            ),
+                prepare_materials::<MFrom, MTo>,
+                apply_new_materials::<MFrom, MTo>,
+            )
+                .chain(),
         )
-        .register_type::<OriginalMaterial>();
+        .add_systems(PostUpdate, restore_original_materials::<MFrom, MTo>)
+        .register_type::<OriginalMaterial<MFrom>>();
     }
 }
 
 #[derive(Component)]
-pub struct ModifyMaterial {
-    insert_new_material: Box<dyn Fn(&mut EntityCommands, StandardMaterial) + Send + Sync>,
+pub struct ModifyMaterial<MFrom: Material> {
+    insert_new_material: Box<dyn Fn(&mut EntityCommands, MFrom) + Send + Sync>,
 }
 
-impl ModifyMaterial {
-    pub fn new<M: Material>(
-        modifier: impl Fn(StandardMaterial) -> M + Send + Sync + 'static,
-    ) -> Self {
+impl<MFrom: Material> ModifyMaterial<MFrom> {
+    pub fn new<MTo: Material>(modifier: impl Fn(MFrom) -> MTo + Send + Sync + 'static) -> Self {
         Self {
             insert_new_material: Box::new(move |commands, original_material| {
                 commands.insert(NewMaterial(modifier(original_material)));
@@ -45,26 +45,30 @@ impl ModifyMaterial {
 }
 
 #[derive(Component, Reflect)]
-struct OriginalMaterial(MeshMaterial3d<StandardMaterial>);
+pub struct OriginalMaterial<MFrom: Material>(pub MeshMaterial3d<MFrom>);
 
 #[derive(Component, Reflect)]
-struct NewMaterial<M>(M);
+struct NewMaterial<MTo: Material>(MTo);
 
-fn prepare_materials<M: Material + Sized>(
+#[derive(Component)]
+struct Modified;
+
+fn prepare_materials<MFrom: Material, MTo: Material>(
     mut commands: Commands,
-    orig_materials: Res<Assets<StandardMaterial>>,
-    material_handles: Query<&MeshMaterial3d<StandardMaterial>, Without<OriginalMaterial>>,
-    modifies: Query<(Entity, &ModifyMaterial)>,
+    orig_materials: Res<Assets<MFrom>>,
+    material_handles: Query<&MeshMaterial3d<MFrom>, Without<OriginalMaterial<MFrom>>>,
+    modifies: Query<(Entity, &ModifyMaterial<MFrom>), Without<Modified>>,
     children: Query<&Children>,
 ) {
     for (entity, modify) in modifies.iter() {
-        for entity in Iterator::chain(children.iter_descendants(entity), [entity]) {
-            if let Ok(original_material_handle) = material_handles.get(entity) {
+        for child in Iterator::chain(children.iter_descendants(entity), [entity]) {
+            if let Ok(original_material_handle) = material_handles.get(child) {
+                commands.entity(entity).insert(Modified);
                 (*modify.insert_new_material)(
                     commands
-                        .entity(entity)
+                        .entity(child)
                         .insert(OriginalMaterial(original_material_handle.clone()))
-                        .remove::<MeshMaterial3d<StandardMaterial>>(),
+                        .remove::<MeshMaterial3d<MFrom>>(),
                     orig_materials
                         .get(original_material_handle)
                         .unwrap()
@@ -75,36 +79,39 @@ fn prepare_materials<M: Material + Sized>(
     }
 }
 
-fn apply_new_materials<M: Material>(
+fn apply_new_materials<MFrom: Material, MTo: Material>(
     mut commands: Commands,
-    mut new_materials: ResMut<Assets<M>>,
+    mut new_materials: ResMut<Assets<MTo>>,
     to_apply: Query<
-        (Entity, &NewMaterial<M>),
-        (With<OriginalMaterial>, Without<MeshMaterial3d<M>>),
+        (Entity, &NewMaterial<MTo>),
+        (With<OriginalMaterial<MFrom>>, Without<MeshMaterial3d<MTo>>),
     >,
 ) {
     for (entity, NewMaterial(new_material)) in to_apply.iter() {
         commands
             .entity(entity)
             .insert(MeshMaterial3d(new_materials.add(new_material.clone())))
-            .remove::<NewMaterial<M>>();
+            .remove::<NewMaterial<MTo>>();
     }
 }
 
-fn restore_original_materials<M: Material>(
+fn restore_original_materials<MFrom: Material, MTo: Material>(
     mut commands: Commands,
-    mut removed: RemovedComponents<ModifyMaterial>,
+    mut removed: RemovedComponents<ModifyMaterial<MFrom>>,
     children: Query<&Children>,
-    restores: Query<&OriginalMaterial>,
+    restores: Query<&OriginalMaterial<MFrom>>,
 ) {
     for entity in removed.read() {
+        if let Some(mut entity) = commands.get_entity(entity) {
+            entity.remove::<Modified>();
+        }
         for entity in Iterator::chain(children.iter_descendants(entity), [entity]) {
             if let Ok(original_material) = restores.get(entity) {
                 commands
                     .entity(entity)
-                    .remove::<MeshMaterial3d<M>>()
+                    .remove::<MeshMaterial3d<MTo>>()
                     .insert(original_material.0.clone())
-                    .remove::<OriginalMaterial>();
+                    .remove::<OriginalMaterial<MFrom>>();
             }
         }
     }

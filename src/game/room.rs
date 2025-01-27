@@ -12,8 +12,7 @@ use crate::{
     game::game_cursor::GameCursor,
     modify_material::{ModifyMaterial, ModifyMaterialPlugin},
     procedural_material::{
-        ProceduralMaterial, ProceduralMaterialPlugin, TextureDef, TextureLayer, TextureMode,
-        TextureUpdate,
+        ExtendedProceduralMaterial, ProceduralMaterial, ProceduralMaterialPlugin,
     },
 };
 
@@ -24,17 +23,19 @@ pub struct RoomPlugin;
 impl Plugin for RoomPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(ProceduralMaterialPlugin::<RoomFloorMaterial>::default())
-            .add_plugins(MaterialPlugin::<
-                ExtendedMaterial<StandardMaterial, MyExtension>,
+            .add_plugins(MaterialPlugin::<ExtendedBuildMaterial>::default())
+            .add_plugins(ModifyMaterialPlugin::<
+                StandardMaterial,
+                ExtendedBuildMaterial,
             >::default())
             .add_plugins(ModifyMaterialPlugin::<
-                ExtendedMaterial<StandardMaterial, MyExtension>,
+                ExtendedProceduralMaterial,
+                ExtendedBuildMaterial,
             >::default())
             .add_systems(
                 Update,
                 (
-                    (init_room, update_room_pos).chain(),
-                    update_room_material,
+                    (update_room_material, init_room, update_room_pos).chain(),
                     update_room_state,
                     update_floor_material,
                 ),
@@ -70,7 +71,6 @@ pub struct Room {
 
 fn init_room(
     mut commands: Commands,
-    mut materials: ResMut<Assets<StandardMaterial>>,
     asset_server: Res<AssetServer>,
     rooms: Query<(Entity, Option<&LoadingState>), With<Room>>,
     children: Query<&Children>,
@@ -79,22 +79,24 @@ fn init_room(
     for (entity, state) in rooms.iter() {
         match state {
             None => {
-                println!("Spawning room");
                 commands.entity(entity).insert((
                     SceneRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset("room.glb"))),
                     LoadingState::Materials,
+                    Visibility::Hidden,
                 ));
             }
             Some(LoadingState::Materials) => {
                 for e in children.iter_descendants(entity) {
                     if gltf_materials.get(e).map_or(false, |m| m.0 == "room_floor") {
-                        println!("Found room_floor");
                         commands
                             .entity(e)
                             .remove::<MeshMaterial3d<StandardMaterial>>()
-                            .insert(MeshMaterial3d(materials.add(StandardMaterial::default())))
                             .insert(RoomFloorMaterial::new(rand::random::<f32>() * 1000.0));
-                        commands.entity(entity).insert(LoadingState::Done);
+                        commands
+                            .entity(entity)
+                            .insert(LoadingState::Done)
+                            .remove::<Visibility>()
+                            .insert(Visibility::Inherited);
                     }
                 }
             }
@@ -117,7 +119,7 @@ fn room_builder(
     mut player_state: ResMut<PlayerState>,
     mut rooms: Query<(&mut Room, &mut RoomState)>,
     game_cursor: Res<GameCursor>,
-    room_builder_entity: Option<ResMut<RoomBuilderEntity>>,
+    room_builder_entity: Option<Res<RoomBuilderEntity>>,
     time: Res<Time>,
 ) {
     let PlayerState::Construct = *player_state else {
@@ -128,21 +130,18 @@ fn room_builder(
         return;
     };
 
-    let entity = match room_builder_entity {
-        Some(entity) => entity.0,
-        None => {
-            let entity = commands
-                .spawn((
-                    Room {
-                        x: game_cursor.x,
-                        y: game_cursor.y,
-                    },
-                    RoomState::SelectedForConstruction,
-                ))
-                .id();
-            commands.insert_resource(RoomBuilderEntity(entity));
-            return;
-        }
+    let Some(entity) = room_builder_entity.map(|e| e.0) else {
+        let entity = commands
+            .spawn((
+                Room {
+                    x: game_cursor.x,
+                    y: game_cursor.y,
+                },
+                RoomState::SelectedForConstruction,
+            ))
+            .id();
+        commands.insert_resource(RoomBuilderEntity(entity));
+        return;
     };
 
     let (mut room, mut room_state) = rooms.get_mut(entity).unwrap();
@@ -168,30 +167,66 @@ fn update_room_material(
             continue;
         };
         let mut entity = commands.entity(entity);
-        entity.remove::<ModifyMaterial>();
+        entity
+            .remove::<ModifyMaterial<StandardMaterial>>()
+            .remove::<ModifyMaterial<ExtendedProceduralMaterial>>();
         match *room_state {
             RoomState::SelectedForConstruction => {
-                entity.insert(ModifyMaterial::new(|_| StandardMaterial {
+                let material = StandardMaterial {
                     base_color: Srgba::new(0.0, 10.0, 0.0, 0.01).into(),
                     alpha_mode: AlphaMode::Blend,
                     ..Default::default()
-                }));
+                };
+                entity
+                    .insert(ModifyMaterial::new({
+                        let material = material.clone();
+                        move |_: StandardMaterial| material.clone()
+                    }))
+                    .insert(ModifyMaterial::new({
+                        let material = material.clone();
+                        move |_: ExtendedProceduralMaterial| material.clone()
+                    }));
             }
             RoomState::SelectedForDestruction => {
-                entity.insert(ModifyMaterial::new(|_| StandardMaterial {
+                let material = StandardMaterial {
                     base_color: Srgba::new(3.0, 0.0, 0.0, 0.01).into(),
                     alpha_mode: AlphaMode::Blend,
                     ..Default::default()
-                }));
+                };
+                entity
+                    .insert(ModifyMaterial::new({
+                        let material = material.clone();
+                        move |_: StandardMaterial| material.clone()
+                    }))
+                    .insert(ModifyMaterial::new({
+                        let material = material.clone();
+                        move |_: ExtendedProceduralMaterial| material.clone()
+                    }));
             }
             RoomState::Construct(created) => {
-                entity.insert(ModifyMaterial::new(move |mut mat| ExtendedMaterial {
-                    base: {
-                        mat.alpha_mode = AlphaMode::Blend;
-                        mat
-                    },
-                    extension: MyExtension { created },
-                }));
+                let extension = BuildMaterial { created };
+                entity
+                    .insert(ModifyMaterial::new({
+                        let extension = extension.clone();
+                        move |mut mat: StandardMaterial| ExtendedMaterial {
+                            base: {
+                                mat.alpha_mode = AlphaMode::Blend;
+                                mat
+                            },
+                            extension: extension.clone(),
+                        }
+                    }))
+                    .insert(ModifyMaterial::new({
+                        let extension = extension.clone();
+                        move |_: ExtendedProceduralMaterial| ExtendedMaterial {
+                            base: StandardMaterial {
+                                base_color: Color::BLACK,
+                                alpha_mode: AlphaMode::Blend,
+                                ..Default::default()
+                            },
+                            extension: extension.clone(),
+                        }
+                    }));
             }
             _ => {}
         }
@@ -241,13 +276,15 @@ fn update_floor_material(mut settings: Query<&mut RoomFloorMaterial>, time: Res<
     }
 }
 
-#[derive(Asset, AsBindGroup, Reflect, Debug, Clone, Default)]
-struct MyExtension {
+#[derive(Asset, AsBindGroup, Reflect, Debug, Clone)]
+struct BuildMaterial {
     #[uniform(100)]
     created: f32,
 }
 
-impl MaterialExtension for MyExtension {
+type ExtendedBuildMaterial = ExtendedMaterial<StandardMaterial, BuildMaterial>;
+
+impl MaterialExtension for BuildMaterial {
     fn fragment_shader() -> ShaderRef {
         "build.wgsl".into()
     }
