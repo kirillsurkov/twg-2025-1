@@ -107,6 +107,7 @@ fn extract<Settings: ProceduralMaterial>(
     render_queue: Res<RenderQueue>,
     buffer: Option<Res<ProceduralMaterialBufferRes<Settings>>>,
     mut entity_index: Local<u32>,
+    mut count: Local<usize>,
 ) {
     let added = main_world
         .query_filtered::<(Entity, &Mesh3d), (With<Settings>, Without<EntityIndex>)>()
@@ -135,7 +136,7 @@ fn extract<Settings: ProceduralMaterial>(
         .collect::<Vec<_>>();
     let data = sorted.iter().map(|(_, s)| s.clone()).collect::<Vec<_>>();
 
-    if added.is_empty() {
+    if added.is_empty() && *count == sorted.len() {
         if let Some(buffer) = buffer {
             let mut wrapper = encase::StorageBuffer::<Vec<u8>>::new(Vec::with_capacity(
                 data.size().get() as usize,
@@ -144,6 +145,8 @@ fn extract<Settings: ProceduralMaterial>(
             render_queue.write_buffer(&buffer.buffer, 0, &wrapper.into_inner());
         }
     } else {
+        *count = sorted.len();
+
         commands.insert_resource(ProceduralMaterialBufferRes::<Settings> {
             buffer: render_device.create_buffer(&BufferDescriptor {
                 label: None,
