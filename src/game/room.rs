@@ -16,7 +16,7 @@ use crate::{
     },
 };
 
-use super::{PlayerState, RoomLocations};
+use super::{map_state::MapState, PlayerState};
 
 pub struct RoomPlugin;
 
@@ -42,7 +42,7 @@ impl Plugin for RoomPlugin {
             )
             .add_systems(
                 PostUpdate,
-                room_builder.run_if(resource_exists::<GameCursor>),
+                (room_construct, room_destruct).run_if(resource_exists::<GameCursor>),
             );
     }
 }
@@ -116,41 +116,44 @@ fn update_room_pos(mut rooms: Query<(&Room, &mut Transform)>) {
 }
 
 #[derive(Resource)]
-struct RoomBuilderEntity(Entity);
+struct RoomInteractionConstruct(Option<Entity>);
 
-fn room_builder(
+#[derive(Resource)]
+struct RoomInteractionDestruct;
+
+fn room_construct(
     mut commands: Commands,
-    mut room_locations: ResMut<RoomLocations>,
+    mut map_state: ResMut<MapState>,
     mut player_state: ResMut<PlayerState>,
     mut rooms: Query<(&mut Room, &mut RoomState)>,
     game_cursor: Res<GameCursor>,
-    room_builder_entity: Option<Res<RoomBuilderEntity>>,
+    room_interaction: Option<Res<RoomInteractionConstruct>>,
     time: Res<Time>,
 ) {
-    let PlayerState::Construct = *player_state else {
-        if let Some(entity) = room_builder_entity {
-            commands.entity(entity.0).despawn_recursive();
-            commands.remove_resource::<RoomBuilderEntity>();
+    if *player_state != PlayerState::Construct {
+        if let Some(RoomInteractionConstruct(Some(entity))) = room_interaction.as_deref() {
+            commands.entity(*entity).despawn_recursive();
         }
+        commands.remove_resource::<RoomInteractionConstruct>();
         return;
     };
 
-    let Some(entity) = room_builder_entity.map(|e| e.0) else {
+    let Some(RoomInteractionConstruct(Some(entity))) = room_interaction.as_deref() else {
         let entity = commands
             .spawn((
                 Room::Fixed(game_cursor.x, game_cursor.y),
                 RoomState::SelectedForConstruction,
             ))
             .id();
-        commands.insert_resource(RoomBuilderEntity(entity));
+        commands.insert_resource(RoomInteractionConstruct(Some(entity)));
         return;
     };
 
-    let (mut room, mut room_state) = rooms.get_mut(entity).unwrap();
+    let Ok((mut room, mut room_state)) = rooms.get_mut(*entity) else {
+        return;
+    };
 
-    let available = room_locations
-        .available
-        .contains(&IVec2::new(game_cursor.x, game_cursor.y));
+    let available = map_state.is_available(game_cursor.x, game_cursor.y);
 
     if available {
         *room = Room::Fixed(game_cursor.x, game_cursor.y);
@@ -167,8 +170,55 @@ fn room_builder(
     if available && game_cursor.just_pressed {
         *room_state = RoomState::Construct(time.elapsed_secs());
         *player_state = PlayerState::Idle;
-        commands.remove_resource::<RoomBuilderEntity>();
-        room_locations.insert_around(game_cursor.x, game_cursor.y);
+        commands.remove_resource::<RoomInteractionConstruct>();
+        map_state.add_room(game_cursor.x, game_cursor.y);
+    }
+}
+
+fn room_destruct(
+    mut commands: Commands,
+    mut player_state: ResMut<PlayerState>,
+    mut map_state: ResMut<MapState>,
+    game_cursor: Res<GameCursor>,
+    room_interaction: Option<Res<RoomInteractionDestruct>>,
+    mut rooms: Query<(Entity, &Room, &mut RoomState)>,
+) {
+    if *player_state != PlayerState::Destruct {
+        if let Some(RoomInteractionDestruct) = room_interaction.as_deref() {
+            for (_, _, mut room_state) in rooms.iter_mut() {
+                if *room_state == RoomState::SelectedForDestruction {
+                    *room_state = RoomState::Idle;
+                }
+            }
+        }
+        commands.remove_resource::<RoomInteractionDestruct>();
+        return;
+    };
+
+    commands.insert_resource(RoomInteractionDestruct);
+
+    map_state.add_temp_disconnect(game_cursor.x, game_cursor.y);
+
+    for (entity, room, mut room_state) in rooms.iter_mut() {
+        let (x, y) = match *room {
+            Room::Fixed(x, y) => (x, y),
+            Room::Floating(..) => continue,
+        };
+
+        let is_selected = !map_state.is_room_connected(x, y);
+
+        if is_selected && *room_state == RoomState::Idle {
+            *room_state = RoomState::SelectedForDestruction;
+        }
+        if !is_selected && *room_state == RoomState::SelectedForDestruction {
+            *room_state = RoomState::Idle;
+        }
+
+        if game_cursor.just_pressed && *room_state == RoomState::SelectedForDestruction {
+            map_state.remove(x, y);
+            commands.entity(entity).despawn_recursive();
+            *player_state = PlayerState::Idle;
+        }
     }
 }
 
@@ -206,7 +256,7 @@ fn update_room_material(
             }
             RoomState::SelectedForDestruction => {
                 let material = StandardMaterial {
-                    base_color: Srgba::new(3.0, 0.0, 0.0, 0.01).into(),
+                    base_color: Srgba::new(7.0, 0.0, 0.0, 0.01).into(),
                     alpha_mode: AlphaMode::Blend,
                     ..Default::default()
                 };
@@ -238,6 +288,8 @@ fn update_room_material(
                         move |_: ExtendedProceduralMaterial| ExtendedMaterial {
                             base: StandardMaterial {
                                 base_color: Color::BLACK,
+                                perceptual_roughness: 1.0,
+                                metallic: 0.5,
                                 alpha_mode: AlphaMode::Blend,
                                 ..Default::default()
                             },

@@ -1,6 +1,6 @@
 use bevy::{gltf::GltfMaterialName, prelude::*};
 
-use super::RoomLocations;
+use super::map_state::MapState;
 
 pub struct PrimaryBlockPlugin;
 
@@ -30,7 +30,7 @@ fn init_primary_block(
     gltf_materials: Query<&GltfMaterialName>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut room_locations: ResMut<RoomLocations>,
+    mut room_locations: ResMut<MapState>,
 ) {
     for (entity, primary_block, state) in primary_blocks.iter() {
         match state {
@@ -44,7 +44,7 @@ fn init_primary_block(
                         primary_block.y as f32 * 2.0,
                         0.0,
                     ));
-                room_locations.insert_around(primary_block.x, primary_block.y);
+                room_locations.add_primary_block(primary_block.x, primary_block.y);
             }
             Some(LoadingState::Materials) => {}
             Some(LoadingState::Done) => {}
