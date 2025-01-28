@@ -54,7 +54,7 @@ fn camera_control(
         **target_pos = **target_pos - Vec3::new(0.0, 0.0, event.y);
     }
 
-    target_pos.z = target_pos.z.max(2.0).min(20.0);
+    target_pos.z = target_pos.z.max(2.0).min(40.0);
 
     let diff = **target_pos - camera.translation;
     camera.translation += diff * time.delta_secs() / 0.1;
