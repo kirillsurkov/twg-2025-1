@@ -6,8 +6,9 @@ struct ProceduralMaterialGlobals {
 }
 
 struct RoomFloorMaterial {
-    time: f32,
     seed: f32,
+    time: f32,
+    time_multiplier: f32,
 }
 
 @group(0) @binding(0) var out_color: texture_storage_2d_array<rgba8unorm, write>;

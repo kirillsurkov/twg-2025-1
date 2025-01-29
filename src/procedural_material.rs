@@ -46,6 +46,10 @@ impl<Settings: ProceduralMaterial> Plugin for ProceduralMaterialPlugin<Settings>
         app.add_plugins(MaterialPlugin::<ExtendedProceduralMaterial>::default())
             .add_plugins(ModifyMaterialPlugin::<
                 ExtendedProceduralMaterial,
+                ExtendedProceduralMaterial,
+            >::default())
+            .add_plugins(ModifyMaterialPlugin::<
+                ExtendedProceduralMaterial,
                 StandardMaterial,
             >::default());
 
@@ -203,12 +207,15 @@ fn extract<Settings: ProceduralMaterial>(
             .map(|(i, _)| {
                 materials.add(ExtendedMaterial {
                     base: StandardMaterial {
+                        base_color: Color::WHITE,
+                        emissive: LinearRgba::WHITE,
                         alpha_mode: AlphaMode::Blend,
                         ..Default::default()
                     },
                     extension: ProceduralMaterialExtension {
                         textures: textures.clone(),
                         index: i as u32,
+                        add_emission: Vec3::default(),
                     },
                 })
             })
@@ -468,10 +475,16 @@ struct ProceduralMaterialTexturesRes<Settings: ProceduralMaterial> {
 pub struct ProceduralMaterialExtension {
     textures: ProceduralMaterialTextures,
     index: u32,
+    pub add_emission: Vec3,
 }
 
 pub type ExtendedProceduralMaterial =
     ExtendedMaterial<StandardMaterial, ProceduralMaterialExtension>;
+
+impl ProceduralMaterialExtension {
+    const BINDING_TEXTURES: u32 = 100;
+    const BINDING_UNIFORMS: u32 = 150;
+}
 
 impl AsBindGroup for ProceduralMaterialExtension {
     type Data = ();
@@ -485,13 +498,12 @@ impl AsBindGroup for ProceduralMaterialExtension {
     where
         Self: Sized,
     {
-        let binding = 100;
         TextureLayer::iter()
             .enumerate()
             .map(|(i, l)| {
                 [
                     BindGroupLayoutEntry {
-                        binding: binding + i as u32 * 2,
+                        binding: Self::BINDING_TEXTURES + i as u32 * 2,
                         visibility: ShaderStages::all(),
                         ty: BindingType::Texture {
                             sample_type: TextureSampleType::Float { filterable: false },
@@ -501,7 +513,7 @@ impl AsBindGroup for ProceduralMaterialExtension {
                         count: None,
                     },
                     BindGroupLayoutEntry {
-                        binding: binding + i as u32 * 2 + 1,
+                        binding: Self::BINDING_TEXTURES + i as u32 * 2 + 1,
                         visibility: ShaderStages::all(),
                         ty: BindingType::Sampler(SamplerBindingType::NonFiltering),
                         count: None,
@@ -509,16 +521,28 @@ impl AsBindGroup for ProceduralMaterialExtension {
                 ]
             })
             .flatten()
-            .chain([BindGroupLayoutEntry {
-                binding: 150,
-                visibility: ShaderStages::all(),
-                ty: BindingType::Buffer {
-                    ty: BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: Some(<u32 as ShaderType>::min_size()),
+            .chain([
+                BindGroupLayoutEntry {
+                    binding: Self::BINDING_UNIFORMS,
+                    visibility: ShaderStages::all(),
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: Some(<u32 as ShaderType>::min_size()),
+                    },
+                    count: None,
                 },
-                count: None,
-            }])
+                BindGroupLayoutEntry {
+                    binding: Self::BINDING_UNIFORMS + 1,
+                    visibility: ShaderStages::all(),
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: Some(<Vec3 as ShaderType>::min_size()),
+                    },
+                    count: None,
+                },
+            ])
             .collect()
     }
 
@@ -528,28 +552,45 @@ impl AsBindGroup for ProceduralMaterialExtension {
         render_device: &RenderDevice,
         _: &mut bevy::ecs::system::SystemParamItem<'_, '_, Self::Param>,
     ) -> Result<UnpreparedBindGroup<Self::Data>, AsBindGroupError> {
-        let binding = 100;
-        let mut buffer = encase::UniformBuffer::new(Vec::new());
-        buffer.write(&self.index).unwrap();
         Ok(UnpreparedBindGroup {
             bindings: TextureLayer::iter()
                 .enumerate()
                 .map(|(i, l)| {
-                    self.textures
-                        .get(l)
-                        .to_binding(binding + i as u32 * 2, binding + i as u32 * 2 + 1)
+                    self.textures.get(l).to_binding(
+                        Self::BINDING_TEXTURES + i as u32 * 2,
+                        Self::BINDING_TEXTURES + i as u32 * 2 + 1,
+                    )
                 })
                 .flatten()
-                .chain([(
-                    150,
-                    OwnedBindingResource::Buffer(render_device.create_buffer_with_data(
-                        &BufferInitDescriptor {
-                            label: None,
-                            contents: buffer.as_ref(),
-                            usage: BufferUsages::COPY_DST | BufferUsages::UNIFORM,
+                .chain(
+                    [
+                        {
+                            let mut buffer = encase::UniformBuffer::new(Vec::new());
+                            buffer.write(&self.index).unwrap();
+                            OwnedBindingResource::Buffer(render_device.create_buffer_with_data(
+                                &BufferInitDescriptor {
+                                    label: None,
+                                    contents: buffer.as_ref(),
+                                    usage: BufferUsages::COPY_DST | BufferUsages::UNIFORM,
+                                },
+                            ))
                         },
-                    )),
-                )])
+                        {
+                            let mut buffer = encase::UniformBuffer::new(Vec::new());
+                            buffer.write(&self.add_emission).unwrap();
+                            OwnedBindingResource::Buffer(render_device.create_buffer_with_data(
+                                &BufferInitDescriptor {
+                                    label: None,
+                                    contents: buffer.as_ref(),
+                                    usage: BufferUsages::COPY_DST | BufferUsages::UNIFORM,
+                                },
+                            ))
+                        },
+                    ]
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, r)| (Self::BINDING_UNIFORMS + i as u32, r)),
+                )
                 .collect(),
             data: (),
         })

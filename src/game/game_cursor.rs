@@ -17,6 +17,27 @@ pub struct GameCursor {
     pub just_pressed: bool,
 }
 
+impl GameCursor {
+    const CELL_SIZE: f32 = 2.00;
+    const GAP: f32 = 0.01;
+
+    pub fn game_to_world(x: i32, y: i32) -> (f32, f32) {
+        (
+            x as f32 * (Self::CELL_SIZE + Self::GAP),
+            y as f32 * (Self::CELL_SIZE + Self::GAP),
+        )
+    }
+
+    pub fn world_to_game(x: f32, y: f32) -> (i32, i32) {
+        (
+            ((x + (Self::CELL_SIZE + Self::GAP) * 0.5) / (Self::CELL_SIZE + Self::GAP)).floor()
+                as i32,
+            ((y + (Self::CELL_SIZE + Self::GAP) * 0.5) / (Self::CELL_SIZE + Self::GAP)).floor()
+                as i32,
+        )
+    }
+}
+
 fn update_cursor(
     mut commands: Commands,
     mouse: Res<ButtonInput<MouseButton>>,
@@ -38,12 +59,15 @@ fn update_cursor(
         return;
     };
 
-    let pos = ray.get_point(distance);
+    let Vec3 { x: fx, y: fy, .. } = ray.get_point(distance);
+    let (x, y) = GameCursor::world_to_game(fx, fy);
+    let just_pressed = mouse.just_pressed(MouseButton::Left);
+
     commands.insert_resource(GameCursor {
-        x: ((pos.x + 2.01 * 0.5) / 2.01).floor() as i32,
-        y: ((pos.y + 2.01 * 0.5) / 2.01).floor() as i32,
-        fx: pos.x,
-        fy: pos.y,
-        just_pressed: mouse.just_pressed(MouseButton::Left),
+        x,
+        y,
+        fx,
+        fy,
+        just_pressed,
     });
 }

@@ -4,7 +4,7 @@ use game_cursor::GameCursorPlugin;
 use light_consts::lux::AMBIENT_DAYLIGHT;
 use map_state::MapStatePlugin;
 use primary_block::{PrimaryBlock, PrimaryBlockPlugin};
-use room::RoomPlugin;
+use room::{Room, RoomPlugin, RoomState};
 
 mod camera;
 mod game_cursor;
@@ -22,7 +22,7 @@ impl Plugin for GamePlugin {
             .add_plugins(GameCursorPlugin)
             .add_systems(Startup, setup)
             .add_systems(Update, update_state)
-            .insert_resource(PlayerState::Idle);
+            .insert_resource(PlayerState::default());
     }
 }
 
@@ -46,8 +46,9 @@ fn setup(mut commands: Commands) {
     commands.spawn(PrimaryBlock { x: 0, y: 0 });
 }
 
-#[derive(Resource, PartialEq)]
+#[derive(Resource, PartialEq, Clone, Default)]
 enum PlayerState {
+    #[default]
     Idle,
     Construct,
     Destruct,
