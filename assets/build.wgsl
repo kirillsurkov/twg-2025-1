@@ -7,6 +7,8 @@
 
 #import bevy_core_pipeline::oit::oit_draw
 
+#import noisy_bevy::fbm_simplex_3d
+
 struct MyExtendedMaterial {
     created: f32,
 }
@@ -19,26 +21,27 @@ fn fragment(
     in: VertexOutput,
     @builtin(front_facing) is_front: bool,
 ) {
-    let elapsed = globals.time - my_extended_material.created;
-
     const DURATION = 3.0;
     const ABOVE = 1.0;
     const BELOW = 0.5;
     const HEIGHT = ABOVE + BELOW;
     const LINE = 0.2;
 
-    let edge = (HEIGHT + LINE) * elapsed / DURATION - BELOW;
-    let alpha = 1.0 - smoothstep(edge - LINE * 0.5, edge + LINE * 0.5, in.world_position.z);
+    let elapsed = min(1.0, (globals.time - my_extended_material.created) / DURATION);
+    let noise = mix(fbm_simplex_3d(in.world_position.xyz, 2, 4.0, 4.0) * LINE * 0.5, 1.0, elapsed);
+
+    let edge = (HEIGHT + LINE) * noise - BELOW;
+    var alpha = 1.0 - smoothstep(edge - LINE * 0.5, edge + LINE * 0.5, in.world_position.z);
     var highlight = smoothstep(edge + LINE, edge - LINE, in.world_position.z);
-    highlight = min(highlight, 1.0 - highlight);
+    highlight = alpha * (1.0 - min(highlight, 1.0 - highlight));
+
+    var emissive = mix(vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(0.0, 0.0, 0.0), highlight) * 100.0;
 
     var pbr_input = pbr_input_from_standard_material(in, is_front);
-    pbr_input.material.emissive = mix(vec4<f32>(0.0, 30.0, 0.0, 0.1), vec4<f32>(0.0), alpha);
-    pbr_input.material.base_color = mix(vec4<f32>(0.0, 10.0, 0.0, 0.2), pbr_input.material.base_color, alpha);
-    pbr_input.material.base_color = alpha_discard(pbr_input.material, pbr_input.material.base_color);
+    pbr_input.material.base_color = mix(vec4<f32>(0.0, 1.0, 0.0, 0.0), pbr_input.material.base_color, alpha);
 
     var color = apply_pbr_lighting(pbr_input);
+    color += vec4<f32>(emissive, 0.0);
 
-    color = mix(color, vec4<f32>(0.0, 1.0, 0.0, 1.0), 0.02);
     oit_draw(in.position, color);
 }
