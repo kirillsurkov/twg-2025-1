@@ -44,10 +44,8 @@ fn hash12(p: vec2<f32>) -> f32 {
 
 fn depth(uv: vec2<f32>, size: vec2<f32>, noise_factor: f32) -> f32 {
     let square = max2(smoothstep(vec2<f32>(0.5), vec2<f32>(0.51), abs(uv * 2.0 - 1.0)));
-    // let m1 = mortar(uv, vec2<f32>(4.0), vec2<f32>(0.06), 1.5);
-    let m2 = mortar(uv, vec2<f32>(12.0), vec2<f32>(0.166), 1.5);
-    // let depth = 1.0 - max(m1, m2);
-    let depth = 1.0 - m2;
+    let m = mortar(uv, vec2<f32>(12.0), vec2<f32>(0.166), 1.5);
+    let depth = 1.0 - m;
     let noise = hash12(uv * size);
     return (1.0 - noise_factor) * depth * square + noise_factor * noise;
 }
@@ -95,7 +93,7 @@ fn fragment(in: VertexOutput) {
     let depth = depth(in.uv, size, 0.0);
     let normal = normal(in.uv, delta, size);
     let facing = smoothstep(0.9, 1.0, depth);
-    let br = facing * smoothstep(0.95, 1.0, fbm_simplex_3d(vec3<f32>(floor(in.uv * 12.0), material.seed + material.time * 0.01), 2, 2.0, 2.0));
+    let br = facing * smoothstep(0.95, 1.0, fbm_simplex_3d(vec3<f32>(floor(in.uv * 12.0), material.seed + material.time * 0.01), 2, 2.0, 2.0, false));
 
     let color = vec4<f32>(vec3<f32>(0.1), 1.0);
     let emissive = vec4<f32>(br * hsv2rgb(vec3<f32>(fract(material.seed), 1.0, 1.0)) * 5.0, 1.0);

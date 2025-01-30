@@ -29,7 +29,7 @@ fn fragment(
     const LINE = 0.2;
 
     let elapsed = min(1.0, (globals.time - material_settings.created) / DURATION);
-    let noise = mix(fbm_simplex_3d(in.world_position.xyz, 2, 4.0, 4.0) * LINE * 0.5, 1.0, elapsed);
+    let noise = mix(fbm_simplex_3d(in.world_position.xyz, 2, 4.0, 4.0, false) * LINE * 0.5, 1.0, elapsed);
 
     let edge = (HEIGHT + LINE) * noise - BELOW;
     var alpha = 1.0 - smoothstep(edge - LINE * 0.5, edge + LINE * 0.5, in.world_position.z);

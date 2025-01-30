@@ -1,5 +1,7 @@
 #import bevy_core_pipeline::fullscreen_vertex_shader::FullscreenVertexOutput
 
+#import noisy_bevy::fbm_simplex_2d
+
 struct BackgroundGlobals {
     time: f32,
     texture_size: vec2<f32>,
@@ -16,49 +18,6 @@ fn to_linear(nonlinear: vec3<f32>) -> vec3<f32> {
 
 fn fmod2(a: vec2<f32>, b: f32) -> vec2<f32> {
     return a - b * floor(a / b);
-}
-
-fn mod289_3(x: vec3<f32>) -> vec3<f32> {
-    return x - floor(x * (1.0 / 289.0)) * 289.0;
-}
-
-fn mod289_2(x: vec2<f32>) -> vec2<f32> {
-    return x - floor(x * (1.0 / 289.0)) * 289.0;
-}
-
-fn permute(x: vec3<f32>) -> vec3<f32> {
-    return mod289_3(((x * 34.0) + 1.0) * x);
-}
-
-fn snoise(v: vec2<f32>) -> f32 {
-    const C = vec4<f32>(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
-
-    let i = floor(v + dot(v, C.yy));
-    let x0 = v - i + dot(i, C.xx);
-
-    let i1 = select(vec2<f32>(0.0, 1.0), vec2<f32>(1.0, 0.0), x0.x > x0.y);
-    let x12 = x0.xyxy + C.xxzz - vec4<f32>(i1, 0.0, 0.0);
-
-    let i_mod = mod289_2(i);
-    let p = permute(permute(i_mod.y + vec3<f32>(0.0, i1.y, 1.0)) + i_mod.x + vec3<f32>(0.0, i1.x, 1.0));
-
-    let m = max(vec3<f32>(0.5) - vec3<f32>(dot(x0, x0), dot(x12.xy, x12.xy), dot(x12.zw, x12.zw)), vec3<f32>(0.0));
-    let m2 = m * m;
-    let m4 = m2 * m2;
-
-    let x = 2.0 * fract(p * C.www) - 1.0;
-    let h = abs(x) - 0.5;
-    let ox = floor(x + 0.5);
-    let a0 = x - ox;
-
-    let norm = 1.79284291400159 - 0.85373472095314 * (a0 * a0 + h * h);
-    let g = vec3<f32>(
-        a0.x * x0.x + h.x * x0.y,
-        a0.y * x12.x + h.y * x12.y,
-        a0.z * x12.z + h.z * x12.w
-    );
-
-    return 130.0 * dot(m4 * norm, g);
 }
 
 fn hash12(p: vec2<f32>) -> f32 {
@@ -97,21 +56,8 @@ fn stars(x: vec2<f32>, num_cells: f32, size: f32, br: f32) -> f32 {
     return br * smoothstep(0.95, 1.0, 1.0 - sqrt(d));
 }
 
-fn fractal_noise(coord: vec2<f32>, persistence: f32, lacunarity: f32) -> f32 {
-    var n = 0.0;
-    var frequency = 1.0;
-    var amplitude = 1.0;
-    for (var o = 0; o < 5; o++) {
-        n += amplitude * snoise(coord * frequency);
-        amplitude *= persistence;
-        frequency *= lacunarity;
-    }
-    return n;
-}
-
-
 fn fractal_nebula(coord: vec2<f32>, color: vec3<f32>, transparency: f32) -> vec3<f32> {
-    return fractal_noise(coord, 0.5, 2.0) * color * transparency;
+    return fbm_simplex_2d(coord, 5, 2.0, 0.5, false) * color * transparency;
 }
 
 fn dither(color: vec3<f32>, frag_coord: vec2<f32>, levels: f32) -> vec3<f32> {
