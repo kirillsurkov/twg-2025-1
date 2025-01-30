@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, marker::PhantomData};
+use std::{any::TypeId, collections::BTreeMap, marker::PhantomData};
 
 use bevy::{
     core_pipeline::core_3d::graph::{Core3d, Node3d},
@@ -41,17 +41,23 @@ impl<Settings: ProceduralMaterial> Default for ProceduralMaterialPlugin<Settings
     }
 }
 
+fn try_add_plugin<T: Plugin>(app: &mut App, plugin: T) {
+    if !app.is_plugin_added::<T>() {
+        app.add_plugins(plugin);
+    }
+}
+
 impl<Settings: ProceduralMaterial> Plugin for ProceduralMaterialPlugin<Settings> {
     fn build(&self, app: &mut App) {
-        app.add_plugins(MaterialPlugin::<ExtendedProceduralMaterial>::default())
-            .add_plugins(MaterialModifierPlugin::<
-                ExtendedProceduralMaterial,
-                ExtendedProceduralMaterial,
-            >::default())
-            .add_plugins(MaterialModifierPlugin::<
-                ExtendedProceduralMaterial,
-                StandardMaterial,
-            >::default());
+        try_add_plugin(app, MaterialPlugin::<ExtendedProceduralMaterial>::default());
+        try_add_plugin(app, MaterialModifierPlugin::<
+            ExtendedProceduralMaterial,
+            ExtendedProceduralMaterial,
+        >::default());
+        try_add_plugin(
+            app,
+            MaterialModifierPlugin::<ExtendedProceduralMaterial, StandardMaterial>::default(),
+        );
 
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
@@ -61,9 +67,19 @@ impl<Settings: ProceduralMaterial> Plugin for ProceduralMaterialPlugin<Settings>
             .add_systems(ExtractSchedule, extract::<Settings>)
             .add_render_graph_node::<ProceduralMaterialNode<Settings>>(
                 Core3d,
-                ProceduralMaterialLabel,
+                ProceduralMaterialLabel {
+                    tid: TypeId::of::<Settings>(),
+                },
             )
-            .add_render_graph_edges(Core3d, (ProceduralMaterialLabel, Node3d::Prepass));
+            .add_render_graph_edges(
+                Core3d,
+                (
+                    ProceduralMaterialLabel {
+                        tid: TypeId::of::<Settings>(),
+                    },
+                    Node3d::Prepass,
+                ),
+            );
     }
 
     fn finish(&self, app: &mut App) {
@@ -237,7 +253,9 @@ fn extract<Settings: ProceduralMaterial>(
 }
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
-struct ProceduralMaterialLabel;
+struct ProceduralMaterialLabel {
+    tid: TypeId,
+}
 
 struct ProceduralMaterialNode<Settings: ProceduralMaterial> {
     _pd: PhantomData<Settings>,
@@ -370,6 +388,7 @@ impl<Settings: ProceduralMaterial> FromWorld for ProceduralMaterialPipeline<Sett
             desc.usage = TextureUsages::RENDER_ATTACHMENT;
             desc
         });
+
         let dummy_texture_view = dummy_texture.create_view(&TextureViewDescriptor::default());
 
         let mut globals = UniformBuffer::from(ProceduralMaterialGlobals {
