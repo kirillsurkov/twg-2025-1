@@ -9,12 +9,13 @@
 
 #import noisy_bevy::fbm_simplex_3d
 
-struct MyExtendedMaterial {
+struct BuildMaterialSettings {
     created: f32,
+    color: vec4<f32>,
 }
 
 @group(2) @binding(100)
-var<uniform> my_extended_material: MyExtendedMaterial;
+var<uniform> material_settings: BuildMaterialSettings;
 
 @fragment
 fn fragment(
@@ -23,11 +24,11 @@ fn fragment(
 ) {
     const DURATION = 3.0;
     const ABOVE = 1.0;
-    const BELOW = 0.5;
+    const BELOW = 0.2;
     const HEIGHT = ABOVE + BELOW;
     const LINE = 0.2;
 
-    let elapsed = min(1.0, (globals.time - my_extended_material.created) / DURATION);
+    let elapsed = min(1.0, (globals.time - material_settings.created) / DURATION);
     let noise = mix(fbm_simplex_3d(in.world_position.xyz, 2, 4.0, 4.0) * LINE * 0.5, 1.0, elapsed);
 
     let edge = (HEIGHT + LINE) * noise - BELOW;
@@ -35,13 +36,14 @@ fn fragment(
     var highlight = smoothstep(edge + LINE, edge - LINE, in.world_position.z);
     highlight = alpha * (1.0 - min(highlight, 1.0 - highlight));
 
-    var emissive = mix(vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(0.0, 0.0, 0.0), highlight) * 100.0;
-
     var pbr_input = pbr_input_from_standard_material(in, is_front);
-    pbr_input.material.base_color = mix(vec4<f32>(0.0, 1.0, 0.0, 0.0), pbr_input.material.base_color, alpha);
+
+    var emissive = mix(material_settings.color.rgb, vec3<f32>(0.0, 0.0, 0.0), highlight) * 100.0;
+    pbr_input.material.base_color = mix(vec4<f32>(material_settings.color.rgb, 0.0), pbr_input.material.base_color, alpha);
 
     var color = apply_pbr_lighting(pbr_input);
     color += vec4<f32>(emissive, 0.0);
+    color += vec4<f32>(material_settings.color.rgb * 0.05, 0.0);
 
     oit_draw(in.position, color);
 }

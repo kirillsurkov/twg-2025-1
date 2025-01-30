@@ -27,7 +27,7 @@ use bevy::{
 use strum::{EnumCount, IntoEnumIterator};
 use strum_macros::{EnumCount, EnumIter};
 
-use crate::modify_material::{ModifyMaterialPlugin, OriginalMaterial};
+use crate::material_modifier::{MaterialModifierPlugin, OriginalMaterial};
 
 pub struct ProceduralMaterialPlugin<Settings: ProceduralMaterial> {
     _pd: PhantomData<Settings>,
@@ -44,11 +44,11 @@ impl<Settings: ProceduralMaterial> Default for ProceduralMaterialPlugin<Settings
 impl<Settings: ProceduralMaterial> Plugin for ProceduralMaterialPlugin<Settings> {
     fn build(&self, app: &mut App) {
         app.add_plugins(MaterialPlugin::<ExtendedProceduralMaterial>::default())
-            .add_plugins(ModifyMaterialPlugin::<
+            .add_plugins(MaterialModifierPlugin::<
                 ExtendedProceduralMaterial,
                 ExtendedProceduralMaterial,
             >::default())
-            .add_plugins(ModifyMaterialPlugin::<
+            .add_plugins(MaterialModifierPlugin::<
                 ExtendedProceduralMaterial,
                 StandardMaterial,
             >::default());
@@ -215,7 +215,7 @@ fn extract<Settings: ProceduralMaterial>(
                     extension: ProceduralMaterialExtension {
                         textures: textures.clone(),
                         index: i as u32,
-                        add_emission: Vec3::default(),
+                        add_emission: LinearRgba::NONE,
                     },
                 })
             })
@@ -226,7 +226,7 @@ fn extract<Settings: ProceduralMaterial>(
             if entity.contains::<OriginalMaterial<ExtendedProceduralMaterial>>() {
                 entity
                     .remove::<OriginalMaterial<ExtendedProceduralMaterial>>()
-                    .insert(OriginalMaterial(MeshMaterial3d(material)));
+                    .insert(OriginalMaterial(material));
             } else {
                 entity
                     .remove::<MeshMaterial3d<ExtendedProceduralMaterial>>()
@@ -475,7 +475,7 @@ struct ProceduralMaterialTexturesRes<Settings: ProceduralMaterial> {
 pub struct ProceduralMaterialExtension {
     textures: ProceduralMaterialTextures,
     index: u32,
-    pub add_emission: Vec3,
+    pub add_emission: LinearRgba,
 }
 
 pub type ExtendedProceduralMaterial =
@@ -538,7 +538,7 @@ impl AsBindGroup for ProceduralMaterialExtension {
                     ty: BindingType::Buffer {
                         ty: BufferBindingType::Uniform,
                         has_dynamic_offset: false,
-                        min_binding_size: Some(<Vec3 as ShaderType>::min_size()),
+                        min_binding_size: Some(<LinearRgba as ShaderType>::min_size()),
                     },
                     count: None,
                 },

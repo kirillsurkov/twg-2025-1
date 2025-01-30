@@ -15,7 +15,7 @@
 @group(2) @binding(108) var normal_texture: texture_2d_array<f32>;
 @group(2) @binding(109) var normal_texture_sampler: sampler;
 @group(2) @binding(150) var<uniform> index: u32;
-@group(2) @binding(151) var<uniform> add_emission: vec3<f32>;
+@group(2) @binding(151) var<uniform> add_emission: vec4<f32>;
 
 @fragment
 fn fragment(
@@ -31,14 +31,14 @@ fn fragment(
 
     pbr_input.material.base_color *= textureSample(color_texture, color_texture_sampler, in.uv, index);
     pbr_input.material.emissive *= textureSample(emissive_texture, emissive_texture_sampler, in.uv, index);
-    pbr_input.material.emissive += vec4<f32>(add_emission, 0.0);
+    pbr_input.material.emissive += add_emission;
     pbr_input.material.metallic = textureSample(metallic_texture, metallic_texture_sampler, in.uv, index).r;
     pbr_input.material.perceptual_roughness = textureSample(roughness_texture, roughness_texture_sampler, in.uv, index).r;
     pbr_input.material.base_color = alpha_discard(pbr_input.material, pbr_input.material.base_color);
 
     var color = apply_pbr_lighting(pbr_input);
     color = main_pass_post_lighting_processing(pbr_input, color);
-    color += pbr_input.material.emissive;
+    color += vec4<f32>(pbr_input.material.emissive.rgb, 0.0);
 
     oit_draw(in.position, color);
 }

@@ -2,15 +2,12 @@ use bevy::{
     gltf::GltfMaterialName,
     pbr::{ExtendedMaterial, MaterialExtension},
     prelude::*,
-    render::{
-        extract_component::ExtractComponent,
-        render_resource::{AsBindGroup, ShaderRef, ShaderType},
-    },
+    render::render_resource::{AsBindGroup, ShaderRef, ShaderType},
 };
 
 use crate::{
     game::game_cursor::GameCursor,
-    modify_material::{ModifyMaterial, ModifyMaterialPlugin},
+    material_modifier::{MaterialModifier, MaterialModifierPlugin},
     procedural_material::{
         ExtendedProceduralMaterial, ProceduralMaterial, ProceduralMaterialPlugin,
     },
@@ -24,7 +21,7 @@ impl Plugin for RoomPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(ProceduralMaterialPlugin::<RoomFloorMaterial>::default())
             .add_plugins(MaterialPlugin::<ExtendedBuildMaterial>::default())
-            .add_plugins(ModifyMaterialPlugin::<
+            .add_plugins(MaterialModifierPlugin::<
                 StandardMaterial,
                 ExtendedBuildMaterial,
             >::default())
@@ -59,18 +56,29 @@ pub enum Room {
     Floating(f32, f32, f32),
 }
 
-#[derive(Component, Clone, Reflect, PartialEq)]
-pub enum RoomState {
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum HighlightState {
+    None,
+    White,
+    Green,
+    Orange,
+    Red,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ActionState {
     Idle,
-    HighlightWhite,
-    HighlightGreen,
-    HighlightOrange,
-    HighlightRed,
     Construct(f32),
     Destruct(f32),
 }
 
-#[derive(Component, Reflect, PartialEq)]
+#[derive(Component, Clone, PartialEq)]
+pub struct RoomState {
+    highlight: HighlightState,
+    action: ActionState,
+}
+
+#[derive(Component, PartialEq)]
 enum LoadingState {
     Materials,
     Done { floor: Entity },
@@ -149,10 +157,7 @@ fn transit_state(
                 if let LoadingState::Done { floor } = loading_state {
                     floor_materials.get_mut(*floor).unwrap().time_multiplier = 1.0;
                 }
-
-                if *room_state == RoomState::HighlightWhite {
-                    *room_state = RoomState::Idle;
-                }
+                room_state.highlight = HighlightState::None;
             }
         }
         PlayerState::Construct => {
@@ -163,11 +168,7 @@ fn transit_state(
         }
         PlayerState::Destruct => {
             for (_, _, _, mut room_state) in rooms.iter_mut() {
-                if *room_state == RoomState::HighlightRed
-                    || *room_state == RoomState::HighlightOrange
-                {
-                    *room_state = RoomState::Idle;
-                }
+                room_state.highlight = HighlightState::None;
             }
         }
     }
@@ -190,6 +191,10 @@ fn state_idle(
             continue;
         };
 
+        let ActionState::Idle = room_state.action else {
+            continue;
+        };
+
         let (x, y) = match *room {
             Room::Fixed(x, y) => (x, y),
             Room::Floating(..) => continue,
@@ -199,12 +204,12 @@ fn state_idle(
 
         let mut floor_material = floor_materials.get_mut(*floor).unwrap();
 
-        if is_selected && *room_state == RoomState::Idle {
-            *room_state = RoomState::HighlightWhite;
+        if is_selected && room_state.highlight == HighlightState::None {
+            room_state.highlight = HighlightState::White;
             floor_material.time_multiplier = 100.0;
         }
-        if !is_selected && *room_state == RoomState::HighlightWhite {
-            *room_state = RoomState::Idle;
+        if !is_selected && room_state.highlight == HighlightState::White {
+            room_state.highlight = HighlightState::None;
             floor_material.time_multiplier = 1.0;
         }
     }
@@ -227,7 +232,10 @@ fn state_construct(
         let entity = commands
             .spawn((
                 Room::Fixed(game_cursor.x, game_cursor.y),
-                RoomState::HighlightGreen,
+                RoomState {
+                    action: ActionState::Idle,
+                    highlight: HighlightState::Green,
+                },
             ))
             .id();
         commands.insert_resource(RoomBuildEntity(entity));
@@ -242,18 +250,19 @@ fn state_construct(
 
     if available {
         *room = Room::Fixed(game_cursor.x, game_cursor.y);
-        if *room_state != RoomState::HighlightGreen {
-            *room_state = RoomState::HighlightGreen;
+        if room_state.highlight != HighlightState::Green {
+            room_state.highlight = HighlightState::Green;
         }
     } else {
         *room = Room::Floating(game_cursor.fx, game_cursor.fy, 0.1);
-        if *room_state != RoomState::HighlightRed {
-            *room_state = RoomState::HighlightRed;
+        if room_state.highlight != HighlightState::Red {
+            room_state.highlight = HighlightState::Red;
         }
     }
 
     if available && game_cursor.just_pressed {
-        *room_state = RoomState::Construct(time.elapsed_secs());
+        room_state.action = ActionState::Construct(time.elapsed_secs());
+        room_state.highlight = HighlightState::None;
         *player_state = PlayerState::Idle;
         commands.remove_resource::<RoomBuildEntity>();
         map_state.add_room(game_cursor.x, game_cursor.y);
@@ -261,10 +270,9 @@ fn state_construct(
 }
 
 fn state_destruct(
-    mut commands: Commands,
     mut player_state: ResMut<PlayerState>,
     mut map_state: ResMut<MapState>,
-    mut rooms: Query<(Entity, &Room, &mut RoomState)>,
+    mut rooms: Query<(&Room, &mut RoomState)>,
     game_cursor: Res<GameCursor>,
     time: Res<Time>,
 ) {
@@ -274,34 +282,30 @@ fn state_destruct(
 
     map_state.add_temp_disconnect(game_cursor.x, game_cursor.y);
 
-    for (entity, room, mut room_state) in rooms.iter_mut() {
+    for (room, mut room_state) in rooms.iter_mut() {
         let (x, y) = match *room {
             Room::Fixed(x, y) => (x, y),
             Room::Floating(..) => continue,
         };
 
-        let is_selected = x == game_cursor.x && y == game_cursor.y;
-        let is_destroying = !map_state.is_room_connected(x, y);
-
-        let states = [
-            RoomState::HighlightRed,
-            RoomState::HighlightOrange,
-            RoomState::Idle,
-        ];
-
-        let target_state = match (is_selected, is_destroying) {
-            (true, _) => &states[0],
-            (false, true) => &states[1],
-            (false, false) => &states[2],
-        };
-
-        if states.contains(&room_state) && &*room_state != target_state {
-            *room_state = target_state.clone();
+        if map_state.is_room_connected(x, y) {
+            room_state.highlight = HighlightState::None;
+            continue;
         }
 
-        if game_cursor.just_pressed && is_destroying {
+        let is_selected = x == game_cursor.x && y == game_cursor.y;
+
+        if is_selected && room_state.highlight != HighlightState::Red {
+            room_state.highlight = HighlightState::Red;
+        }
+        if !is_selected && room_state.highlight != HighlightState::Orange {
+            room_state.highlight = HighlightState::Orange;
+        }
+
+        if game_cursor.just_pressed {
             map_state.remove(x, y);
-            *room_state = RoomState::Destruct(time.elapsed_secs() + rand::random::<f32>());
+            room_state.action =
+                ActionState::Destruct(time.elapsed_secs() + rand::random::<f32>() * 0.5);
             *player_state = PlayerState::Idle;
         }
     }
@@ -309,10 +313,7 @@ fn state_destruct(
 
 fn update_room_material(
     mut commands: Commands,
-    rooms: Query<
-        (Entity, &RoomState, &LoadingState),
-        // Or<(Changed<RoomState>, Changed<LoadingState>)>,
-    >,
+    rooms: Query<(Entity, &RoomState, &LoadingState)>,
     time: Res<Time>,
 ) {
     for (entity, room_state, loading_state) in rooms.iter() {
@@ -320,105 +321,98 @@ fn update_room_material(
             LoadingState::Done { .. } => {}
             _ => continue,
         }
+
         let mut entity = commands.entity(entity);
+
         entity
-            .remove::<ModifyMaterial<StandardMaterial>>()
-            .remove::<ModifyMaterial<ExtendedProceduralMaterial>>();
-        match *room_state {
-            RoomState::Idle => {}
-            RoomState::HighlightWhite => {
+            .remove::<MaterialModifier<StandardMaterial>>()
+            .remove::<MaterialModifier<ExtendedBuildMaterial>>()
+            .remove::<MaterialModifier<ExtendedProceduralMaterial>>();
+
+        let highlight_white = LinearRgba::WHITE * 0.002;
+        let highlight_green = LinearRgba::new(0.0, 1.0, 0.0, 1.0);
+        let highlight_orange = LinearRgba::new(1.0, 0.5, 0.0, 1.0);
+        let highlight_red = LinearRgba::new(1.0, 0.0, 0.0, 1.0);
+
+        let with_highlight = |mut mat: StandardMaterial, highlight| {
+            mat.base_color.set_alpha(0.01);
+            mat.emissive = highlight * 10000.0;
+            mat.alpha_mode = AlphaMode::Blend;
+            mat
+        };
+
+        let floor_inactive = MaterialModifier::new(move |mut mat: ExtendedProceduralMaterial| {
+            mat.base.base_color.set_alpha(0.5);
+            mat.base.emissive = LinearRgba::NONE;
+            mat
+        });
+
+        match (room_state.action, room_state.highlight) {
+            (ActionState::Idle, HighlightState::None) => {}
+            (ActionState::Idle, HighlightState::White) => {
                 entity
-                    .insert(ModifyMaterial::new(|mut mat: StandardMaterial| {
-                        mat.emissive += LinearRgba::WHITE * 0.002;
+                    .insert(MaterialModifier::new(move |mut mat: StandardMaterial| {
+                        mat.emissive += highlight_white;
                         mat.alpha_mode = AlphaMode::Blend;
                         mat
                     }))
-                    .insert(ModifyMaterial::new(
-                        |mut mat: ExtendedProceduralMaterial| {
-                            mat.extension.add_emission = Vec3::splat(0.002);
+                    .insert(MaterialModifier::new(
+                        move |mut mat: ExtendedProceduralMaterial| {
+                            mat.extension.add_emission = highlight_white;
                             mat
                         },
                     ));
             }
-            RoomState::HighlightGreen => {
-                entity
-                    .insert(ModifyMaterial::new(|mut mat: StandardMaterial| {
-                        mat.base_color.set_alpha(0.01);
-                        mat.emissive = Srgba::new(0.0, 100.0, 0.0, 1.0).into();
-                        mat.alpha_mode = AlphaMode::Blend;
-                        mat
-                    }))
-                    .insert(ModifyMaterial::new(
-                        |mut mat: ExtendedProceduralMaterial| {
-                            mat.base.base_color.set_alpha(0.5);
-                            mat.base.emissive = LinearRgba::BLACK;
-                            mat
-                        },
-                    ));
+            (ActionState::Idle, HighlightState::Green) => {
+                entity.insert(floor_inactive).insert(MaterialModifier::new(
+                    move |mat: StandardMaterial| with_highlight(mat, highlight_green),
+                ));
             }
-            RoomState::HighlightOrange => {
-                entity
-                    .insert(ModifyMaterial::new(|mut mat: StandardMaterial| {
-                        mat.base_color.set_alpha(0.01);
-                        mat.emissive = Srgba::new(100.0, 75.0, 0.0, 1.0).into();
-                        mat.alpha_mode = AlphaMode::Blend;
-                        mat
-                    }))
-                    .insert(ModifyMaterial::new(
-                        |mut mat: ExtendedProceduralMaterial| {
-                            mat.base.base_color.set_alpha(0.5);
-                            mat.base.emissive = LinearRgba::BLACK;
-                            mat
-                        },
-                    ));
+            (ActionState::Idle, HighlightState::Orange) => {
+                entity.insert(floor_inactive).insert(MaterialModifier::new(
+                    move |mat: StandardMaterial| with_highlight(mat, highlight_orange),
+                ));
             }
-            RoomState::HighlightRed => {
-                entity
-                    .insert(ModifyMaterial::new(|mut mat: StandardMaterial| {
-                        mat.base_color.set_alpha(0.01);
-                        mat.emissive = Srgba::new(100.0, 0.0, 0.0, 1.0).into();
-                        mat.alpha_mode = AlphaMode::Blend;
-                        mat
-                    }))
-                    .insert(ModifyMaterial::new(
-                        |mut mat: ExtendedProceduralMaterial| {
-                            mat.base.emissive = LinearRgba::BLACK;
-                            mat.base.base_color.set_alpha(0.5);
-                            mat
-                        },
-                    ));
+            (ActionState::Idle, HighlightState::Red) => {
+                entity.insert(floor_inactive).insert(MaterialModifier::new(
+                    move |mat: StandardMaterial| with_highlight(mat, highlight_red),
+                ));
             }
-            RoomState::Construct(created) => {
+            (ActionState::Construct(created), highlight) => {
                 entity
-                    .insert(ModifyMaterial::new({
+                    .insert(MaterialModifier::new({
                         move |mut mat: StandardMaterial| ExtendedMaterial {
                             base: {
                                 mat.alpha_mode = AlphaMode::Blend;
                                 mat
                             },
-                            extension: BuildMaterial { created },
+                            extension: BuildMaterial {
+                                settings: BuildMaterialSettings {
+                                    created,
+                                    color: match highlight {
+                                        HighlightState::Orange => highlight_orange,
+                                        HighlightState::Red => highlight_red,
+                                        _ => highlight_green,
+                                    },
+                                },
+                            },
                         }
                     }))
-                    .insert(ModifyMaterial::new(
-                        |mut mat: ExtendedProceduralMaterial| {
-                            mat.base.base_color.set_alpha(0.5);
-                            mat.base.emissive = LinearRgba::BLACK;
-                            mat
-                        },
-                    ));
+                    .insert(floor_inactive);
             }
-            RoomState::Destruct(created) => {
+            (ActionState::Destruct(created), _) => {
                 let elapsed = (time.elapsed_secs() - created).max(0.0).min(3.0);
                 let alpha = 1.0 - elapsed / 3.0;
                 entity
-                    .insert(ModifyMaterial::new(move |mut mat: StandardMaterial| {
+                    .insert(MaterialModifier::new(move |mut mat: StandardMaterial| {
                         mat.base_color.set_alpha(alpha);
                         mat.alpha_mode = AlphaMode::Blend;
                         mat
                     }))
-                    .insert(ModifyMaterial::new(
+                    .insert(MaterialModifier::new(
                         move |mut mat: ExtendedProceduralMaterial| {
                             mat.base.base_color.set_alpha(alpha);
+                            mat.base.emissive = LinearRgba::NONE;
                             mat
                         },
                     ));
@@ -436,7 +430,6 @@ fn update_floor_material(mut settings: Query<&mut RoomFloorMaterial>, time: Res<
 fn update_room_state(
     mut commands: Commands,
     mut rooms: Query<(Entity, &mut Room, &LoadingState, &mut RoomState)>,
-    mut map_state: ResMut<MapState>,
     time: Res<Time>,
 ) {
     let elapsed = time.elapsed_secs();
@@ -446,11 +439,11 @@ fn update_room_state(
             LoadingState::Done { .. } => {}
             _ => continue,
         }
-        match *room_state {
-            RoomState::Construct(created) if elapsed - created >= 3.0 => {
-                *room_state = RoomState::Idle
+        match room_state.action {
+            ActionState::Construct(created) if elapsed - created >= 3.0 => {
+                room_state.action = ActionState::Idle
             }
-            RoomState::Destruct(created) => {
+            ActionState::Destruct(created) => {
                 let elapsed = (elapsed - created).max(0.0);
                 if elapsed >= 3.0 {
                     commands.entity(entity).despawn_recursive();
@@ -494,13 +487,19 @@ impl ProceduralMaterial for RoomFloorMaterial {
     }
 }
 
-#[derive(Asset, AsBindGroup, Reflect, Debug, Clone)]
-struct BuildMaterial {
-    #[uniform(100)]
+#[derive(Debug, Clone, ShaderType, Reflect)]
+struct BuildMaterialSettings {
     created: f32,
+    color: LinearRgba,
 }
 
-type ExtendedBuildMaterial = ExtendedMaterial<StandardMaterial, BuildMaterial>;
+#[derive(Asset, AsBindGroup, Reflect, Debug, Clone)]
+pub struct BuildMaterial {
+    #[uniform(100)]
+    settings: BuildMaterialSettings,
+}
+
+pub type ExtendedBuildMaterial = ExtendedMaterial<StandardMaterial, BuildMaterial>;
 
 impl MaterialExtension for BuildMaterial {
     fn fragment_shader() -> ShaderRef {
