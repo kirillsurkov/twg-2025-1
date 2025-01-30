@@ -1,16 +1,19 @@
-use bevy::{prelude::*, utils::hashbrown::HashSet};
+use bevy::prelude::*;
 use camera::GameCameraPlugin;
-use game_cursor::GameCursorPlugin;
+use game_cursor::{GameCursor, GameCursorPlugin};
 use light_consts::lux::AMBIENT_DAYLIGHT;
 use map_state::MapStatePlugin;
 use primary_block::{PrimaryBlock, PrimaryBlockPlugin};
-use room::{Room, RoomPlugin, RoomState};
+use rock::{Rock, RockPlugin};
+use room::RoomPlugin;
 
 mod camera;
 mod game_cursor;
 mod map_state;
 mod primary_block;
+mod rock;
 mod room;
+
 pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
@@ -19,6 +22,7 @@ impl Plugin for GamePlugin {
             .add_plugins(GameCameraPlugin(Vec3::new(0.0, 0.0, 15.0)))
             .add_plugins(PrimaryBlockPlugin)
             .add_plugins(RoomPlugin)
+            .add_plugins(RockPlugin)
             .add_plugins(GameCursorPlugin)
             .add_systems(Startup, setup)
             .add_systems(Update, update_state)
@@ -27,23 +31,27 @@ impl Plugin for GamePlugin {
 }
 
 fn setup(mut commands: Commands) {
-    commands.spawn((
-        DirectionalLight {
-            illuminance: AMBIENT_DAYLIGHT * 0.1,
-            shadows_enabled: true,
-            ..Default::default()
-        },
-        Transform::from_xyz(1.0, 1.0, 10.0).looking_at(Vec3::ZERO, Vec3::Z),
-    ));
-    commands.spawn((
-        DirectionalLight {
-            illuminance: AMBIENT_DAYLIGHT * 0.1,
-            shadows_enabled: true,
-            ..Default::default()
-        },
-        Transform::from_xyz(-1.0, -1.0, 10.0).looking_at(Vec3::ZERO, Vec3::Z),
-    ));
-    commands.spawn(PrimaryBlock { x: 0, y: 0 });
+    let directional_light = |x, y| {
+        (
+            DirectionalLight {
+                illuminance: AMBIENT_DAYLIGHT * 0.1,
+                shadows_enabled: true,
+                ..Default::default()
+            },
+            Transform::from_xyz(x, y, 10.0).looking_at(Vec3::ZERO, Vec3::Z),
+        )
+    };
+
+    commands.spawn(directional_light(1.0, 1.0));
+    commands.spawn(directional_light(1.0, -1.0));
+    commands.spawn(directional_light(-1.0, 1.0));
+    commands.spawn(directional_light(-1.0, -1.0));
+
+    commands.spawn(PrimaryBlock { x: -1, y: 0 });
+    commands.spawn({
+        let (x, y) = GameCursor::game_to_world(1, 0);
+        Rock { x, y }
+    });
 }
 
 #[derive(Resource, PartialEq, Clone, Default)]
