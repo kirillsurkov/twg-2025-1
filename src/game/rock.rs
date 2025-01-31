@@ -13,7 +13,10 @@ use crate::{
     RandomRotation,
 };
 
-use super::{game_cursor::GameCursor, map_state::MapState};
+use super::{
+    game_cursor::GameCursor,
+    map_state::{MapLayer, MapState},
+};
 
 pub struct RockPlugin;
 
@@ -127,8 +130,8 @@ fn init(
 fn update_pos(
     mut commands: Commands,
     mut rocks: Query<(Entity, &Rock, &mut Transform)>,
+    mut map_state: ResMut<MapState>,
     time: Res<Time>,
-    map_state: Res<MapState>,
 ) {
     let (min, max) = map_state.get_bounds();
     let min = Vec2::from(GameCursor::game_to_world(min.x, min.y)) - 30.0;
@@ -149,6 +152,13 @@ fn update_pos(
             rock.rotation_axis,
             TAU * rock.rotation_speed * time.delta_secs(),
         );
+
+        let game_coords =
+            GameCursor::world_to_game(transform.translation.x, transform.translation.y);
+        if map_state.room(game_coords.x, game_coords.y, MapLayer::Main) {
+            map_state.remove(game_coords.x, game_coords.y, MapLayer::Main);
+            commands.entity(entity).try_despawn_recursive();
+        }
     }
 }
 

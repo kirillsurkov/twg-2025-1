@@ -13,7 +13,10 @@ use crate::{
     },
 };
 
-use super::{map_state::MapState, PlayerState};
+use super::{
+    map_state::{MapLayer, MapState},
+    PlayerState,
+};
 
 pub struct RoomPlugin;
 
@@ -274,13 +277,10 @@ fn state_destruct(
     mut map_state: ResMut<MapState>,
     mut rooms: Query<(&Room, &mut RoomState)>,
     game_cursor: Res<GameCursor>,
-    time: Res<Time>,
 ) {
     if *player_state != PlayerState::Destruct {
         return;
     };
-
-    map_state.add_temp_disconnect(game_cursor.x, game_cursor.y);
 
     for (room, mut room_state) in rooms.iter_mut() {
         let (x, y) = match *room {
@@ -288,7 +288,7 @@ fn state_destruct(
             Room::Floating(..) => continue,
         };
 
-        if map_state.is_room_connected(x, y) {
+        if map_state.room(x, y, MapLayer::Build) {
             room_state.highlight = HighlightState::None;
             continue;
         }
@@ -303,12 +303,13 @@ fn state_destruct(
         }
 
         if game_cursor.just_pressed {
-            map_state.remove(x, y);
-            room_state.action =
-                ActionState::Destruct(time.elapsed_secs() + rand::random::<f32>() * 0.5);
+            map_state.remove(x, y, MapLayer::Main);
             *player_state = PlayerState::Idle;
         }
     }
+
+    map_state.sync_build();
+    map_state.remove(game_cursor.x, game_cursor.y, MapLayer::Build);
 }
 
 fn update_room_material(
@@ -430,6 +431,8 @@ fn update_floor_material(mut settings: Query<&mut RoomFloorMaterial>, time: Res<
 fn update_room_state(
     mut commands: Commands,
     mut rooms: Query<(Entity, &mut Room, &LoadingState, &mut RoomState)>,
+    build_entity: Option<Res<RoomBuildEntity>>,
+    map_state: Res<MapState>,
     time: Res<Time>,
 ) {
     let elapsed = time.elapsed_secs();
@@ -438,6 +441,13 @@ fn update_room_state(
         match loading_state {
             LoadingState::Done { .. } => {}
             _ => continue,
+        }
+        if let Room::Fixed(x, y) = &*room {
+            let is_build = build_entity.as_ref().is_some_and(|b| b.0 == entity);
+            if !is_build && !map_state.room(*x, *y, MapLayer::Main) {
+                room_state.action =
+                    ActionState::Destruct(time.elapsed_secs() + rand::random::<f32>() * 0.5);
+            }
         }
         match room_state.action {
             ActionState::Construct(created) if elapsed - created >= 3.0 => {
