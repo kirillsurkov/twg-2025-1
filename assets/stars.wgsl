@@ -69,6 +69,8 @@ fn dither(color: vec3<f32>, frag_coord: vec2<f32>, levels: f32) -> vec3<f32> {
 
 @fragment
 fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
+    const SPEED = 0.01;
+
     let globals_time = globals.time;
     let texture_size = globals.texture_size;//vec2<f32>(2560.0, 1440.0);
 
@@ -79,12 +81,12 @@ fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
     let nebula_color1 = hsv2rgb(vec3<f32>(0.66 * cos(globals_time * 0.05), 0.5, 0.25));
     let nebula_color2 = hsv2rgb(vec3<f32>(0.66 * cos(globals_time * 0.07), 1.0, 0.25));
 
-    let nebula1 = fractal_nebula(coord2560 + vec2(globals_time * 0.001 + 0.1, 0.1), nebula_color1, 1.0);
-    let nebula2 = fractal_nebula(coord2560 + vec2(globals_time * 0.001, 0.2), nebula_color2, 0.5);
+    let nebula1 = fractal_nebula(coord2560 + vec2(globals_time * SPEED / 4.0 + 0.1, 0.1), nebula_color1, 1.0);
+    let nebula2 = fractal_nebula(coord2560 + vec2(globals_time * SPEED / 4.0, 0.2), nebula_color2, 0.5);
 
-    let stars1 = stars(coord2560 + vec2<f32>(globals_time, 0.0) * 0.004, 8.0, 0.03, 2.0) * vec3(0.74, 0.74, 0.74);
-    let stars2 = stars(coord2560 + vec2<f32>(globals_time, 0.0) * 0.002, 16.0, 0.02, 1.0) * vec3(0.97, 0.74, 0.74);
-    let stars3 = stars(coord2560 + vec2<f32>(globals_time, 0.0) * 0.001, 32.0, 0.01, 0.5) * vec3(0.9, 0.9, 0.95);
+    let stars1 = stars(coord2560 + vec2<f32>(globals_time, 0.0) * SPEED / 1.0, 8.0, 0.03, 2.0) * vec3(0.74, 0.74, 0.74);
+    let stars2 = stars(coord2560 + vec2<f32>(globals_time, 0.0) * SPEED / 2.0, 16.0, 0.02, 1.0) * vec3(0.97, 0.74, 0.74);
+    let stars3 = stars(coord2560 + vec2<f32>(globals_time, 0.0) * SPEED / 4.0, 32.0, 0.01, 0.5) * vec3(0.9, 0.9, 0.95);
 
     let result = nebula1 + nebula2 + stars1 + stars2 + stars3;
 
