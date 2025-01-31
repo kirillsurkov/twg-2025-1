@@ -1,7 +1,7 @@
 #import bevy_pbr::pbr_fragment::pbr_input_from_standard_material
-#import bevy_pbr::pbr_types::{STANDARD_MATERIAL_FLAGS_DOUBLE_SIDED_BIT, PbrInput}
-#import bevy_pbr::pbr_functions::{alpha_discard, apply_pbr_lighting, main_pass_post_lighting_processing, apply_normal_mapping, calculate_tbn_mikktspace}
-#import bevy_pbr::forward_io::{VertexOutput, FragmentOutput}
+#import bevy_pbr::pbr_types::STANDARD_MATERIAL_FLAGS_DOUBLE_SIDED_BIT
+#import bevy_pbr::pbr_functions::{alpha_discard, apply_pbr_lighting, main_pass_post_lighting_processing, apply_normal_mapping, calculate_tbn_mikktspace, calculate_view, prepare_world_normal}
+#import bevy_pbr::forward_io::VertexOutput
 #import bevy_core_pipeline::oit::oit_draw
 
 @group(2) @binding(100) var color_texture: texture_2d_array<f32>;
@@ -24,11 +24,7 @@ fn fragment(
 ) {
     var pbr_input = pbr_input_from_standard_material(in, is_front);
 
-    let double_sided = (pbr_input.material.flags & STANDARD_MATERIAL_FLAGS_DOUBLE_SIDED_BIT) != 0u;
-    let tbn = calculate_tbn_mikktspace(pbr_input.world_normal, in.world_tangent);
-    let nt = textureSample(normal_texture, normal_texture_sampler, in.uv, index).xyz;
-    pbr_input.N = apply_normal_mapping(pbr_input.material.flags, tbn, double_sided, is_front, nt);
-
+    pbr_input.N = calculate_tbn_mikktspace(in.world_normal, in.world_tangent) * textureSample(normal_texture, normal_texture_sampler, in.uv, index).xyz;
     pbr_input.material.base_color *= textureSample(color_texture, color_texture_sampler, in.uv, index);
     pbr_input.material.emissive *= textureSample(emissive_texture, emissive_texture_sampler, in.uv, index);
     pbr_input.material.emissive += add_emission;
