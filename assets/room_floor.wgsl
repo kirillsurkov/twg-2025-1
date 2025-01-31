@@ -78,7 +78,6 @@ struct VertexOutput {
 fn vertex(@builtin(vertex_index) vertex_index: u32, @builtin(instance_index) instance_index: u32) -> VertexOutput {
     let uv = vec2<f32>(f32(vertex_index >> 1u), f32(vertex_index & 1u)) * 2.0;
     let clip_position = vec4<f32>(uv * vec2<f32>(2.0, -2.0) + vec2<f32>(-1.0, 1.0), 0.0, 1.0);
-
     return VertexOutput(clip_position, uv, instance_index);
 }
 
@@ -95,10 +94,10 @@ fn fragment(in: VertexOutput) {
     let facing = smoothstep(0.9, 1.0, depth);
     let br = facing * smoothstep(0.95, 1.0, fbm_simplex_3d(vec3<f32>(floor(in.uv * 12.0), material.seed + material.time * 0.01), 2, 2.0, 2.0, false));
 
-    let color = vec4<f32>(vec3<f32>(0.1), 1.0);
+    let color = vec4<f32>(vec3<f32>(0.0), 1.0);
     let emissive = vec4<f32>(br * hsv2rgb(vec3<f32>(fract(material.seed), 1.0, 1.0)) * 5.0, 1.0);
-    let metallic = facing * 0.2 + 0.8;
-    let roughness = (1.0 - facing) * 0.2 + 0.1;
+    let metallic = facing;
+    let roughness = 1.0;
 
     textureStore(out_color, frag_coord, in.index, color);
     textureStore(out_emissive, frag_coord, in.index, emissive);
