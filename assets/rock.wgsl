@@ -72,7 +72,7 @@ fn fragment(in: VertexOutput) {
 
     let seed = material.seed;
 
-    let depth = depth(in.uv, seed);
+    let depth = smoothstep(0.1, 0.9, depth(in.uv, seed));
     let normal = normal(in.uv, delta, seed);
 
     let silicon = vec3<f32>(0.4, 0.35, 0.3);
@@ -87,5 +87,5 @@ fn fragment(in: VertexOutput) {
     // textureStore(out_emissive, frag_coord, in.index, emissive);
     textureStore(out_metallic, frag_coord, in.index, vec4<f32>(metallic, 0.0, 0.0, 0.0));
     textureStore(out_roughness, frag_coord, in.index, vec4<f32>(roughness, 0.0, 0.0, 0.0));
-    textureStore(out_normal, frag_coord, in.index, vec4<f32>(0.0, 0.0, 1.0, 0.0));
+    textureStore(out_normal, frag_coord, in.index, vec4<f32>(normal, 0.0));
 }

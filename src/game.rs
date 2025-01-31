@@ -47,11 +47,7 @@ fn setup(mut commands: Commands) {
     commands.spawn(directional_light(-1.0, 1.0));
     commands.spawn(directional_light(-1.0, -1.0));
 
-    commands.spawn(PrimaryBlock { x: -1, y: 0 });
-    commands.spawn({
-        let (x, y) = GameCursor::game_to_world(1, 0);
-        Rock { x, y }
-    });
+    commands.spawn(PrimaryBlock { x: 0, y: 0 });
 }
 
 #[derive(Resource, PartialEq, Clone, Default)]

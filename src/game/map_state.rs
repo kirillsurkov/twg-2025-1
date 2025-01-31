@@ -20,13 +20,25 @@ enum MapNode {
 
 #[derive(Resource, Default)]
 pub struct MapState {
-    map: HashMap<(i32, i32), MapNode>,
-    temp_disconnects: HashSet<(i32, i32)>,
+    map: HashMap<IVec2, MapNode>,
+    temp_disconnects: HashSet<IVec2>,
+    bounds_min: IVec2,
+    bounds_max: IVec2,
 }
 
 impl MapState {
+    fn recalculate_bounds(&mut self) {
+        self.bounds_min = IVec2::MAX;
+        self.bounds_max = IVec2::MIN;
+        for (vec, _) in &self.map {
+            self.bounds_min = self.bounds_min.min(*vec);
+            self.bounds_max = self.bounds_max.max(*vec);
+        }
+    }
+
     fn add_block(&mut self, x: i32, y: i32, node: MapNode) {
-        self.map.insert((x, y), node);
+        self.map.insert(IVec2::new(x, y), node);
+        self.recalculate_bounds();
     }
 
     pub fn add_primary_block(&mut self, x: i32, y: i32) {
@@ -38,33 +50,45 @@ impl MapState {
     }
 
     pub fn remove(&mut self, x: i32, y: i32) {
-        self.map.remove(&(x, y));
+        self.map.remove(&IVec2::new(x, y));
+        self.recalculate_bounds();
     }
 
     pub fn add_temp_disconnect(&mut self, x: i32, y: i32) {
-        self.temp_disconnects.insert((x, y));
+        self.temp_disconnects.insert(IVec2::new(x, y));
     }
 
     pub fn is_available(&self, x: i32, y: i32) -> bool {
-        !self.map.contains_key(&(x, y))
-            && (self.map.contains_key(&(x + 1, y))
-                || self.map.contains_key(&(x - 1, y))
-                || self.map.contains_key(&(x, y + 1))
-                || self.map.contains_key(&(x, y - 1)))
+        !self.map.contains_key(&IVec2::new(x, y))
+            && (self.map.contains_key(&IVec2::new(x + 1, y))
+                || self.map.contains_key(&IVec2::new(x - 1, y))
+                || self.map.contains_key(&IVec2::new(x, y + 1))
+                || self.map.contains_key(&IVec2::new(x, y - 1)))
     }
 
     pub fn is_room(&self, x: i32, y: i32) -> bool {
-        match self.map.get(&(x, y)) {
+        match self.map.get(&IVec2::new(x, y)) {
             Some(MapNode::Room(_)) => true,
             _ => false,
         }
     }
 
     pub fn is_room_connected(&self, x: i32, y: i32) -> bool {
-        match self.map.get(&(x, y)) {
+        match self.map.get(&IVec2::new(x, y)) {
             Some(MapNode::Room(connected)) => *connected,
             _ => false,
         }
+    }
+
+    pub fn get_bounds(&self) -> (IVec2, IVec2) {
+        (self.bounds_min, self.bounds_max)
+    }
+
+    pub fn primary_blocks(&self) -> impl IntoIterator<Item = IVec2> + '_ {
+        self.map.iter().filter_map(|(c, n)| match n {
+            MapNode::PrimaryBlock => Some(*c),
+            _ => None,
+        })
     }
 }
 
@@ -90,28 +114,28 @@ fn check_connectivity(mut map_state: ResMut<MapState>) {
         .filter(|c| !primary_blocks.contains(c))
         .collect::<HashSet<_>>();
 
-    while let Some((x, y)) = stack.pop() {
-        if visited.contains(&(x, y)) {
+    while let Some(IVec2 { x, y }) = stack.pop() {
+        if visited.contains(&IVec2::new(x, y)) {
             continue;
         }
-        visited.insert((x, y));
+        visited.insert(IVec2::new(x, y));
 
-        match map_state.map.get_mut(&(x, y)).unwrap() {
+        match map_state.map.get_mut(&IVec2::new(x, y)).unwrap() {
             MapNode::Room(connected) => *connected = true,
             _ => {}
         }
 
         if map_state.is_room(x + 1, y) {
-            stack.push((x + 1, y));
+            stack.push(IVec2::new(x + 1, y));
         }
         if map_state.is_room(x - 1, y) {
-            stack.push((x - 1, y));
+            stack.push(IVec2::new(x - 1, y));
         }
         if map_state.is_room(x, y + 1) {
-            stack.push((x, y + 1));
+            stack.push(IVec2::new(x, y + 1));
         }
         if map_state.is_room(x, y - 1) {
-            stack.push((x, y - 1));
+            stack.push(IVec2::new(x, y - 1));
         }
     }
 

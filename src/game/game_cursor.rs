@@ -18,23 +18,17 @@ pub struct GameCursor {
 }
 
 impl GameCursor {
-    const CELL_SIZE: f32 = 2.00;
+    pub const CELL_SIZE: f32 = 2.00;
     const GAP: f32 = 0.01;
 
-    pub fn game_to_world(x: i32, y: i32) -> (f32, f32) {
-        (
-            x as f32 * (Self::CELL_SIZE + Self::GAP),
-            y as f32 * (Self::CELL_SIZE + Self::GAP),
-        )
+    pub fn game_to_world(x: i32, y: i32) -> Vec2 {
+        Vec2::new(x as f32, y as f32) * (Self::CELL_SIZE + Self::GAP)
     }
 
-    pub fn world_to_game(x: f32, y: f32) -> (i32, i32) {
-        (
-            ((x + (Self::CELL_SIZE + Self::GAP) * 0.5) / (Self::CELL_SIZE + Self::GAP)).floor()
-                as i32,
-            ((y + (Self::CELL_SIZE + Self::GAP) * 0.5) / (Self::CELL_SIZE + Self::GAP)).floor()
-                as i32,
-        )
+    pub fn world_to_game(x: f32, y: f32) -> IVec2 {
+        ((Vec2::new(x, y) + (Self::CELL_SIZE + Self::GAP) * 0.5) / (Self::CELL_SIZE + Self::GAP))
+            .floor()
+            .as_ivec2()
     }
 }
 
@@ -60,7 +54,7 @@ fn update_cursor(
     };
 
     let Vec3 { x: fx, y: fy, .. } = ray.get_point(distance);
-    let (x, y) = GameCursor::world_to_game(fx, fy);
+    let IVec2 { x, y } = GameCursor::world_to_game(fx, fy);
     let just_pressed = mouse.just_pressed(MouseButton::Left);
 
     commands.insert_resource(GameCursor {

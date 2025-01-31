@@ -127,8 +127,8 @@ fn update_room_pos(mut rooms: Query<(&Room, &mut Transform)>) {
     for (room, mut transform) in rooms.iter_mut() {
         let (x, y, z) = match *room {
             Room::Fixed(x, y) => {
-                let (fx, fy) = GameCursor::game_to_world(x, y);
-                (fx, fy, 0.0)
+                let fvec = GameCursor::game_to_world(x, y);
+                (fvec.x, fvec.y, 0.0)
             }
             Room::Floating(fx, fy, fz) => (fx, fy, fz),
         };
@@ -449,11 +449,15 @@ fn update_room_state(
                     commands.entity(entity).despawn_recursive();
                     continue;
                 }
-                let (x, y) = match *room {
+                let pos = match *room {
                     Room::Fixed(x, y) => GameCursor::game_to_world(x, y),
-                    Room::Floating(x, y, _) => (x, y),
+                    Room::Floating(x, y, _) => Vec2::new(x, y),
                 };
-                *room = Room::Floating(x - delta * elapsed * 2.0, y, -elapsed * elapsed * 4.0);
+                *room = Room::Floating(
+                    pos.x - delta * elapsed * 2.0,
+                    pos.y,
+                    -elapsed * elapsed * 4.0,
+                );
             }
             _ => {}
         }
