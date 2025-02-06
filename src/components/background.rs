@@ -7,6 +7,7 @@ use bevy::{
     prelude::*,
     render::{
         extract_component::{ExtractComponent, ExtractComponentPlugin},
+        extract_resource::{ExtractResource, ExtractResourcePlugin},
         render_graph::{
             NodeRunError, RenderGraphApp, RenderGraphContext, RenderLabel, ViewNode, ViewNodeRunner,
         },
@@ -23,28 +24,17 @@ use bevy::{
     },
 };
 
-#[derive(Resource, Reflect, Clone)]
-struct BackgroundPluginSettings {
-    shader: String,
+#[derive(Resource, ExtractResource, Reflect, Clone)]
+pub struct BackgroundPluginSettings {
+    pub shader: String,
 }
 
-pub struct BackgroundPlugin {
-    settings: BackgroundPluginSettings,
-}
-
-impl BackgroundPlugin {
-    pub fn new<T: AsRef<str>>(shader: T) -> Self {
-        Self {
-            settings: BackgroundPluginSettings {
-                shader: shader.as_ref().to_string(),
-            },
-        }
-    }
-}
+pub struct BackgroundPlugin;
 
 impl Plugin for BackgroundPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(ExtractComponentPlugin::<RenderBackground>::default())
+            .add_plugins(ExtractResourcePlugin::<BackgroundPluginSettings>::default())
             .register_type::<BackgroundPluginSettings>();
 
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
@@ -52,20 +42,23 @@ impl Plugin for BackgroundPlugin {
         };
 
         render_app
-            .insert_resource(self.settings.clone())
+            .add_systems(
+                ExtractSchedule,
+                init_pipeline.run_if(
+                    resource_exists::<BackgroundPluginSettings>
+                        .and(resource_changed::<BackgroundPluginSettings>),
+                ),
+            )
             .add_render_graph_node::<ViewNodeRunner<BackgroundNode>>(Core3d, BackgroundLabel)
             .add_render_graph_edges(
                 Core3d,
                 (Node3d::Prepass, BackgroundLabel, Node3d::StartMainPass),
             );
     }
+}
 
-    fn finish(&self, app: &mut App) {
-        let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
-            return;
-        };
-        render_app.init_resource::<BackgroundPipeline>();
-    }
+fn init_pipeline(mut commands: Commands) {
+    commands.init_resource::<BackgroundPipeline>();
 }
 
 #[derive(Component, ExtractComponent, Default, Clone, Copy)]
@@ -94,7 +87,9 @@ impl ViewNode for BackgroundNode {
         world: &World,
     ) -> Result<(), NodeRunError> {
         let render_queue = world.resource::<RenderQueue>();
-        let post_process_pipeline = world.resource::<BackgroundPipeline>();
+        let Some(post_process_pipeline) = world.get_resource::<BackgroundPipeline>() else {
+            return Ok(());
+        };
         let pipeline_cache = world.resource::<PipelineCache>();
         let Some(pipeline) = pipeline_cache.get_render_pipeline(post_process_pipeline.pipeline_id)
         else {

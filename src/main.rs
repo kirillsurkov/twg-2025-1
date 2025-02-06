@@ -1,19 +1,20 @@
 use std::f32::consts::PI;
 
-use bevy::{dev_tools::fps_overlay::FpsOverlayPlugin, prelude::*};
+use bevy::{
+    dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin},
+    prelude::*,
+};
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
-use game::GamePlugin;
-use material_modifier::MaterialModifierPlugin;
+use components::{
+    background::BackgroundPlugin, material_modifier::MaterialModifierPlugin,
+    update_material_textures::UpdateMaterialTexturesPlugin, ComponentsPlugin,
+};
 use noisy_bevy::NoisyShaderPlugin;
 use rand::Rng;
-use rand_distr::{Distribution, Normal, StandardNormal};
-use update_material_textures::UpdateMaterialTexturesPlugin;
+use scenes::ScenesPlugin;
 
-mod background;
-mod game;
-mod material_modifier;
-mod procedural_material;
-mod update_material_textures;
+mod components;
+mod scenes;
 
 trait RandomRotation {
     fn random() -> Quat;
@@ -31,24 +32,42 @@ impl RandomRotation for Quat {
         let angle1 = 2.0 * PI * v;
         let angle2 = 2.0 * PI * w;
 
-        let x = s * angle1.sin();
-        let y = s * angle1.cos();
-        let z = t * angle2.sin();
-        let w_component = t * angle2.cos();
-
-        Quat::from_xyzw(x, y, z, w_component)
+        Quat::from_xyzw(
+            s * angle1.sin(),
+            s * angle1.cos(),
+            t * angle2.sin(),
+            t * angle2.cos(),
+        )
     }
+}
+
+#[derive(States, Debug, Hash, PartialEq, Eq, Clone)]
+enum AppState {
+    Splash,
+    MainMenu,
+    Game,
+    Titles,
 }
 
 fn main() {
     App::new()
-        .add_plugins((DefaultPlugins, MeshPickingPlugin))
-        .add_plugins(WorldInspectorPlugin::new())
+        .add_plugins((DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                title: "Avaruus".to_string(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }),))
+        // .add_plugins(WorldInspectorPlugin::new())
         .add_plugins(FpsOverlayPlugin::default())
         .add_plugins(NoisyShaderPlugin)
-        .add_plugins(UpdateMaterialTexturesPlugin::<StandardMaterial>::default())
-        .add_plugins(MaterialModifierPlugin::<StandardMaterial, StandardMaterial>::default())
-        .add_plugins(GamePlugin)
+        .add_plugins(ComponentsPlugin)
+        .add_plugins(ScenesPlugin)
+        .insert_state(AppState::MainMenu)
         .insert_resource(AmbientLight::NONE)
+        .insert_resource(FpsOverlayConfig {
+            enabled: false,
+            ..Default::default()
+        })
         .run();
 }

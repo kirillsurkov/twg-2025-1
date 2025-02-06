@@ -6,15 +6,17 @@ use bevy::{
     prelude::*,
 };
 
-use crate::background::{BackgroundPlugin, RenderBackground};
+use crate::components::background::{BackgroundPluginSettings, RenderBackground};
 
 pub struct GameCameraPlugin(pub Vec3);
 
 impl Plugin for GameCameraPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(BackgroundPlugin::new("stars.wgsl"))
-            .add_systems(Startup, setup)
+        app.add_systems(Startup, setup)
             .add_systems(Update, camera_control)
+            .insert_resource(BackgroundPluginSettings {
+                shader: "stars.wgsl".to_string(),
+            })
             .insert_resource(TargetPos(self.0));
     }
 }
@@ -54,7 +56,7 @@ fn camera_control(
         **target_pos = **target_pos - Vec3::new(0.0, 0.0, event.y);
     }
 
-    target_pos.z = target_pos.z.max(2.0).min(40.0);
+    target_pos.z = target_pos.z.max(2.5).min(40.0);
 
     let diff = **target_pos - camera.translation;
     camera.translation += diff * time.delta_secs() / 0.1;

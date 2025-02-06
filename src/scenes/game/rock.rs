@@ -1,20 +1,19 @@
-use std::f32::consts::{FRAC_PI_2, FRAC_PI_4, FRAC_PI_8, PI, SQRT_2, TAU};
+use std::f32::consts::{FRAC_PI_4, FRAC_PI_8, SQRT_2, TAU};
 
-use bevy::{gltf::GltfMaterialName, prelude::*, render::render_resource::ShaderType};
-use ops::FloatPow;
-use rand::{
-    seq::{IteratorRandom, SliceRandom},
-    Rng,
+use bevy::{
+    gltf::GltfMaterialName, prelude::*, render::render_resource::ShaderType, utils::HashMap,
 };
-use rand_distr::{weighted::WeightedIndex, Distribution, Normal, OpenClosed01, StandardNormal};
+use ops::FloatPow;
+use rand::Rng;
+use rand_distr::{weighted::WeightedIndex, Distribution};
 
 use crate::{
-    procedural_material::{ProceduralMaterial, ProceduralMaterialPlugin},
+    components::procedural_material::{ProceduralMaterial, ProceduralMaterialPlugin},
     RandomRotation,
 };
 
 use super::{
-    game_cursor::GameCursor,
+    game_cursor::{CursorLayer, GameCursor},
     map_state::{MapLayer, MapState},
 };
 
@@ -23,7 +22,25 @@ pub struct RockPlugin;
 impl Plugin for RockPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(ProceduralMaterialPlugin::<RockMaterial>::default())
-            .add_systems(Update, (init, update_pos, rock_spawner.after(init)));
+            .add_systems(Update, (init, update_pos, rock_spawner.after(init)))
+            .insert_resource(RockMapState {
+                rocks: HashMap::new(),
+            });
+    }
+}
+
+#[derive(Resource)]
+pub struct RockMapState {
+    rocks: HashMap<IVec2, Entity>,
+}
+
+impl RockMapState {
+    fn add(&mut self, x: i32, y: i32, entity: Entity) {
+        self.rocks.insert(IVec2::new(x, y), entity);
+    }
+
+    pub fn rock(&self, x: i32, y: i32) -> Option<Entity> {
+        self.rocks.get(&IVec2::new(x, y)).cloned()
     }
 }
 
@@ -35,9 +52,15 @@ pub struct Rock {
 }
 
 #[derive(Component, PartialEq)]
+pub enum RockState {
+    Idle,
+    Hooked,
+}
+
+#[derive(Component, PartialEq)]
 enum LoadingState {
     Materials,
-    Done { floor: Entity },
+    Done,
 }
 
 fn init(
@@ -58,6 +81,7 @@ fn init(
                 commands.entity(entity).insert((
                     SceneRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset("rock_0.glb"))),
                     LoadingState::Materials,
+                    RockState::Idle,
                     Visibility::Hidden,
                 ));
             }
@@ -74,7 +98,7 @@ fn init(
                     let triangles = mesh.triangles().unwrap().collect::<Vec<_>>();
                     let weighted = WeightedIndex::new(triangles.iter().map(|t| t.area())).unwrap();
 
-                    for _ in 0..20 {
+                    for _ in 0..5 {
                         let triangle = triangles[weighted.sample(&mut rng)];
                         let size = rng.random_range(0.1..0.5);
                         let height = rng.random_range(1.0..1.5);
@@ -118,7 +142,7 @@ fn init(
                         .insert(RockMaterial::new(rand::random::<f32>() * 1000.0));
                     commands
                         .entity(entity)
-                        .insert(LoadingState::Done { floor: child })
+                        .insert(LoadingState::Done)
                         .insert(Visibility::Inherited);
                 }
             }
@@ -129,15 +153,18 @@ fn init(
 
 fn update_pos(
     mut commands: Commands,
-    mut rocks: Query<(Entity, &Rock, &mut Transform)>,
+    mut rocks: Query<(Entity, &Rock, &RockState, &mut Transform)>,
     mut map_state: ResMut<MapState>,
+    mut rock_map_state: ResMut<RockMapState>,
     time: Res<Time>,
 ) {
     let (min, max) = map_state.get_bounds();
-    let min = Vec2::from(GameCursor::game_to_world(min.x, min.y)) - 30.0;
-    let max = Vec2::from(GameCursor::game_to_world(max.x, max.y)) + 30.0;
+    let min = Vec2::from(GameCursor::game_to_world(min.x, min.y, CursorLayer::Room)) - 40.0;
+    let max = Vec2::from(GameCursor::game_to_world(max.x, max.y, CursorLayer::Room)) + 40.0;
 
-    for (entity, rock, mut transform) in rocks.iter_mut() {
+    rock_map_state.rocks.clear();
+
+    for (entity, rock, rock_state, mut transform) in rocks.iter_mut() {
         if transform.translation.x <= min.x
             || transform.translation.x >= max.x
             || transform.translation.y <= min.y
@@ -147,18 +174,31 @@ fn update_pos(
             continue;
         }
 
+        if *rock_state != RockState::Idle {
+            continue;
+        }
+
         transform.translation += rock.movement_speed * time.delta_secs();
         transform.rotate_axis(
             rock.rotation_axis,
             TAU * rock.rotation_speed * time.delta_secs(),
         );
 
-        let game_coords =
-            GameCursor::world_to_game(transform.translation.x, transform.translation.y);
-        if map_state.room(game_coords.x, game_coords.y, MapLayer::Main) {
-            map_state.remove(game_coords.x, game_coords.y, MapLayer::Main);
+        let pos = GameCursor::world_to_game(
+            transform.translation.x,
+            transform.translation.y,
+            CursorLayer::Room,
+        );
+        if map_state.room(pos.x, pos.y, MapLayer::Main) {
+            map_state.remove(pos.x, pos.y, MapLayer::Main);
             commands.entity(entity).try_despawn_recursive();
         }
+        let pos = GameCursor::world_to_game(
+            transform.translation.x,
+            transform.translation.y,
+            CursorLayer::Hook,
+        );
+        rock_map_state.add(pos.x, pos.y, entity);
     }
 }
 
@@ -175,11 +215,11 @@ fn rock_spawner(
     let mut rng = rand::rng();
 
     let (min, max) = map_state.get_bounds();
-    let min = Vec2::from(GameCursor::game_to_world(min.x, min.y));
-    let max = Vec2::from(GameCursor::game_to_world(max.x, max.y));
+    let min = Vec2::from(GameCursor::game_to_world(min.x, min.y, CursorLayer::Room));
+    let max = Vec2::from(GameCursor::game_to_world(max.x, max.y, CursorLayer::Room));
 
-    let origin = min - 10.0;
-    let size = max + 10.0 - origin;
+    let origin = min - Vec2::new(30.0, 20.0);
+    let size = max + Vec2::new(30.0, 20.0) - origin;
 
     let point = rng.random_range(0.0..size.x * 2.0 + size.y * 2.0);
 
@@ -203,10 +243,10 @@ fn rock_spawner(
 
     let spawn_point = origin + spawn_point;
     let flight_dir = Vec2::from_angle(rng.random_range(-FRAC_PI_4..FRAC_PI_4)).rotate(flight_dir);
-    let cell_radius = GameCursor::CELL_SIZE * SQRT_2;
+    let cell_radius = CursorLayer::Room.size() * SQRT_2;
 
     for IVec2 { x, y } in map_state.primary_blocks() {
-        let coords = GameCursor::game_to_world(x, y);
+        let coords = GameCursor::game_to_world(x, y, CursorLayer::Room);
         let closest_dir = coords - spawn_point;
         let closest_dist = closest_dir.angle_to(flight_dir).sin() * closest_dir.length();
         if closest_dist <= cell_radius {
@@ -216,11 +256,11 @@ fn rock_spawner(
 
     commands.spawn((
         Rock {
-            movement_speed: flight_dir.extend(0.0).normalize(),
+            movement_speed: flight_dir.extend(0.0).normalize() * rng.random_range(1.0..3.0),
             rotation_speed: rng.random_range(-1.0..1.0),
             rotation_axis: Transform::from_rotation(Quat::random()).forward(),
         },
-        Transform::from_xyz(spawn_point.x, spawn_point.y, 0.0)
+        Transform::from_xyz(spawn_point.x, spawn_point.y, 2.0)
             .looking_to(flight_dir.extend(0.0), Vec3::Z)
             .with_scale(Vec3::splat(rng.random_range(0.2..0.5))),
     ));

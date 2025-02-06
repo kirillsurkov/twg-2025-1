@@ -17,22 +17,33 @@ pub struct GameCursor {
     pub just_pressed: bool,
 }
 
-impl GameCursor {
-    pub const CELL_SIZE: f32 = 2.00;
-    const GAP: f32 = 0.01;
+pub enum CursorLayer {
+    Room,
+    Hook,
+}
 
-    pub fn game_to_world(x: i32, y: i32) -> Vec2 {
-        Vec2::new(x as f32, y as f32) * (Self::CELL_SIZE + Self::GAP)
+impl CursorLayer {
+    pub fn size(&self) -> f32 {
+        match self {
+            Self::Room => 2.01,
+            Self::Hook => 1.0,
+        }
+    }
+}
+
+impl GameCursor {
+    pub fn game_to_world(x: i32, y: i32, layer: CursorLayer) -> Vec2 {
+        Vec2::new(x as f32, y as f32) * layer.size()
     }
 
-    pub fn world_to_game(x: f32, y: f32) -> IVec2 {
-        ((Vec2::new(x, y) + (Self::CELL_SIZE + Self::GAP) * 0.5) / (Self::CELL_SIZE + Self::GAP))
+    pub fn world_to_game(x: f32, y: f32, layer: CursorLayer) -> IVec2 {
+        ((Vec2::new(x, y) + 0.5 * layer.size()) / layer.size())
             .floor()
             .as_ivec2()
     }
 }
 
-fn update_cursor(
+pub fn update_cursor(
     mut commands: Commands,
     mouse: Res<ButtonInput<MouseButton>>,
     camera: Single<(&Camera, &GlobalTransform)>,
@@ -54,7 +65,7 @@ fn update_cursor(
     };
 
     let Vec3 { x: fx, y: fy, .. } = ray.get_point(distance);
-    let IVec2 { x, y } = GameCursor::world_to_game(fx, fy);
+    let IVec2 { x, y } = GameCursor::world_to_game(fx, fy, CursorLayer::Room);
     let just_pressed = mouse.just_pressed(MouseButton::Left);
 
     commands.insert_resource(GameCursor {

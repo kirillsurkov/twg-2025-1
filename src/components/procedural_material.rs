@@ -27,7 +27,7 @@ use bevy::{
 use strum::{EnumCount, IntoEnumIterator};
 use strum_macros::{EnumCount, EnumIter};
 
-use crate::material_modifier::{MaterialModifierPlugin, OriginalMaterial};
+use super::material_modifier::{MaterialModifierPlugin, OriginalMaterial};
 
 pub struct ProceduralMaterialPlugin<Settings: ProceduralMaterial> {
     _pd: PhantomData<Settings>,

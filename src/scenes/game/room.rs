@@ -5,17 +5,14 @@ use bevy::{
     render::render_resource::{AsBindGroup, ShaderRef, ShaderType},
 };
 
-use crate::{
-    game::game_cursor::GameCursor,
-    material_modifier::{MaterialModifier, MaterialModifierPlugin},
-    procedural_material::{
-        ExtendedProceduralMaterial, ProceduralMaterial, ProceduralMaterialPlugin,
-    },
+use crate::components::{
+    material_modifier::{MaterialModifier, MaterialModifierPlugin}, procedural_material::{ExtendedProceduralMaterial, ProceduralMaterial, ProceduralMaterialPlugin},
 };
 
 use super::{
+    game_cursor::{CursorLayer, GameCursor},
     map_state::{MapLayer, MapState},
-    PlayerState,
+    player::PlayerState,
 };
 
 pub struct RoomPlugin;
@@ -43,7 +40,11 @@ impl Plugin for RoomPlugin {
                     ),
                     (
                         transit_state,
-                        (state_idle, state_construct, state_destruct)
+                        (
+                            state_idle.run_if(in_state(PlayerState::Idle)),
+                            state_construct.run_if(in_state(PlayerState::Construct)),
+                            state_destruct.run_if(in_state(PlayerState::Destruct)),
+                        )
                             .run_if(resource_exists::<GameCursor>),
                     )
                         .chain(),
@@ -112,7 +113,11 @@ fn init_room(
                         commands
                             .entity(child)
                             .remove::<MeshMaterial3d<StandardMaterial>>()
-                            .insert(RoomFloorMaterial::new(rand::random::<f32>() * 1000.0));
+                            .insert(RoomFloorMaterial::new(
+                                rand::random::<f32>() * 1000.0,
+                                0.95,
+                                1.0,
+                            ));
                         commands
                             .entity(entity)
                             .insert(LoadingState::Done { floor: child })
@@ -130,7 +135,7 @@ fn update_room_pos(mut rooms: Query<(&Room, &mut Transform)>) {
     for (room, mut transform) in rooms.iter_mut() {
         let (x, y, z) = match *room {
             Room::Fixed(x, y) => {
-                let fvec = GameCursor::game_to_world(x, y);
+                let fvec = GameCursor::game_to_world(x, y, CursorLayer::Room);
                 (fvec.x, fvec.y, 0.0)
             }
             Room::Floating(fx, fy, fz) => (fx, fy, fz),
@@ -146,49 +151,40 @@ fn transit_state(
     mut commands: Commands,
     mut rooms: Query<(Entity, &Room, &LoadingState, &mut RoomState)>,
     mut floor_materials: Query<&mut RoomFloorMaterial>,
-    mut prev_player_state: Local<PlayerState>,
-    player_state: ResMut<PlayerState>,
+    mut transition_events: EventReader<StateTransitionEvent<PlayerState>>,
     build_entity: Option<Res<RoomBuildEntity>>,
 ) {
-    if *player_state == *prev_player_state {
-        return;
-    };
-
-    match *prev_player_state {
-        PlayerState::Idle => {
-            for (_, _, loading_state, mut room_state) in rooms.iter_mut() {
-                if let LoadingState::Done { floor } = loading_state {
-                    floor_materials.get_mut(*floor).unwrap().time_multiplier = 1.0;
+    for event in transition_events.read() {
+        match event.exited {
+            Some(PlayerState::Idle) => {
+                for (_, _, loading_state, mut room_state) in rooms.iter_mut() {
+                    if let LoadingState::Done { floor } = loading_state {
+                        floor_materials.get_mut(*floor).unwrap().time_multiplier = 1.0;
+                    }
+                    room_state.highlight = HighlightState::None;
                 }
-                room_state.highlight = HighlightState::None;
             }
-        }
-        PlayerState::Construct => {
-            if let Some(RoomBuildEntity(entity)) = build_entity.as_deref() {
-                commands.entity(*entity).despawn_recursive();
+            Some(PlayerState::Construct) => {
+                if let Some(RoomBuildEntity(entity)) = build_entity.as_deref() {
+                    commands.entity(*entity).despawn_recursive();
+                }
+                commands.remove_resource::<RoomBuildEntity>();
             }
-            commands.remove_resource::<RoomBuildEntity>();
-        }
-        PlayerState::Destruct => {
-            for (_, _, _, mut room_state) in rooms.iter_mut() {
-                room_state.highlight = HighlightState::None;
+            Some(PlayerState::Destruct) => {
+                for (_, _, _, mut room_state) in rooms.iter_mut() {
+                    room_state.highlight = HighlightState::None;
+                }
             }
+            _ => {}
         }
     }
-
-    *prev_player_state = player_state.clone();
 }
 
 fn state_idle(
-    player_state: ResMut<PlayerState>,
     game_cursor: Res<GameCursor>,
     mut rooms: Query<(&Room, &LoadingState, &mut RoomState)>,
     mut floor_materials: Query<&mut RoomFloorMaterial>,
 ) {
-    if *player_state != PlayerState::Idle {
-        return;
-    }
-
     for (room, loading_state, mut room_state) in rooms.iter_mut() {
         let LoadingState::Done { floor } = loading_state else {
             continue;
@@ -220,17 +216,13 @@ fn state_idle(
 
 fn state_construct(
     mut commands: Commands,
+    mut next_player_state: ResMut<NextState<PlayerState>>,
     mut map_state: ResMut<MapState>,
-    mut player_state: ResMut<PlayerState>,
     mut rooms: Query<(&mut Room, &mut RoomState)>,
     game_cursor: Res<GameCursor>,
     room_interaction: Option<Res<RoomBuildEntity>>,
     time: Res<Time>,
 ) {
-    if *player_state != PlayerState::Construct {
-        return;
-    };
-
     let Some(RoomBuildEntity(entity)) = room_interaction.as_deref() else {
         let entity = commands
             .spawn((
@@ -266,22 +258,18 @@ fn state_construct(
     if available && game_cursor.just_pressed {
         room_state.action = ActionState::Construct(time.elapsed_secs());
         room_state.highlight = HighlightState::None;
-        *player_state = PlayerState::Idle;
+        next_player_state.set(PlayerState::Idle);
         commands.remove_resource::<RoomBuildEntity>();
         map_state.add_room(game_cursor.x, game_cursor.y);
     }
 }
 
 fn state_destruct(
-    mut player_state: ResMut<PlayerState>,
+    mut next_player_state: ResMut<NextState<PlayerState>>,
     mut map_state: ResMut<MapState>,
     mut rooms: Query<(&Room, &mut RoomState)>,
     game_cursor: Res<GameCursor>,
 ) {
-    if *player_state != PlayerState::Destruct {
-        return;
-    };
-
     for (room, mut room_state) in rooms.iter_mut() {
         let (x, y) = match *room {
             Room::Fixed(x, y) => (x, y),
@@ -304,7 +292,7 @@ fn state_destruct(
 
         if game_cursor.just_pressed {
             map_state.remove(x, y, MapLayer::Main);
-            *player_state = PlayerState::Idle;
+            next_player_state.set(PlayerState::Idle);
         }
     }
 
@@ -460,7 +448,7 @@ fn update_room_state(
                     continue;
                 }
                 let pos = match *room {
-                    Room::Fixed(x, y) => GameCursor::game_to_world(x, y),
+                    Room::Fixed(x, y) => GameCursor::game_to_world(x, y, CursorLayer::Room),
                     Room::Floating(x, y, _) => Vec2::new(x, y),
                 };
                 *room = Room::Floating(
@@ -475,18 +463,22 @@ fn update_room_state(
 }
 
 #[derive(Component, ShaderType, Clone)]
-struct RoomFloorMaterial {
+pub struct RoomFloorMaterial {
     seed: f32,
     time: f32,
     time_multiplier: f32,
+    low_edge: f32,
+    high_edge: f32,
 }
 
 impl RoomFloorMaterial {
-    fn new(seed: f32) -> Self {
+    pub fn new(seed: f32, low_edge: f32, high_edge: f32) -> Self {
         Self {
             seed,
             time: 0.0,
             time_multiplier: 1.0,
+            low_edge,
+            high_edge,
         }
     }
 }
