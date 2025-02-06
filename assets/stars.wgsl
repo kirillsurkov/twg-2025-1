@@ -69,7 +69,7 @@ fn dither(color: vec3<f32>, frag_coord: vec2<f32>, levels: f32) -> vec3<f32> {
 
 @fragment
 fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
-    const SPEED = 0.01;
+    const SPEED = 0.004;
 
     let globals_time = globals.time;
     let texture_size = globals.texture_size;//vec2<f32>(2560.0, 1440.0);
