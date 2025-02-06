@@ -15,10 +15,10 @@
             - [ ] Logic
         - [ ] Extension blocks
             - [x] 3D model
-            - [ ] Textures
+            - [x] Textures
             - [ ] Logic
-            - [ ] Building
-            - [ ] Destructing (cascade)
+            - [x] Building
+            - [x] Destructing (cascade)
             - [ ] Main structures
                 - [ ] Furnace
                     - [x] 3D model
@@ -42,15 +42,15 @@
                     - [ ] Logic
             - [ ] Secondary structures
                 - [ ] Shield
-                - [ ] Hook
+                - [x] Hook
     - [ ] Asteroids
-        - [ ] Spawn logic (Can't hit main ship block)
+        - [x] Spawn logic (Can't hit main ship block)
         - [ ] Gray asteroid (Silicon)
-        - [ ] Red asteroid (Copper)
+        - [x] Red asteroid (Copper)
         - [ ] Green asteroid (Uranium)
         - [ ] Blue asteroid (Water)
         - [ ] Yellow asteroid (Aurelium)
     - [ ] Craft recipes
     - [ ] UI
 - [ ] Titles
-- [ ] Music
+- [x] Music
