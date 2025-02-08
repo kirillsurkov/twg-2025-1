@@ -11,7 +11,7 @@ use components::{
 };
 use noisy_bevy::NoisyShaderPlugin;
 use rand::Rng;
-use scenes::ScenesPlugin;
+use scenes::AppScenesPlugin;
 
 mod components;
 mod scenes;
@@ -41,14 +41,6 @@ impl RandomRotation for Quat {
     }
 }
 
-#[derive(States, Debug, Hash, PartialEq, Eq, Clone)]
-enum AppState {
-    Splash,
-    MainMenu,
-    Game,
-    Titles,
-}
-
 fn main() {
     App::new()
         .add_plugins((DefaultPlugins.set(WindowPlugin {
@@ -58,15 +50,16 @@ fn main() {
             }),
             ..Default::default()
         }),))
-        // .add_plugins(WorldInspectorPlugin::new())
+        .add_plugins(WorldInspectorPlugin::new())
         .add_plugins(FpsOverlayPlugin::default())
         .add_plugins(NoisyShaderPlugin)
         .add_plugins(ComponentsPlugin)
+        .add_plugins(AppScenesPlugin)
         .add_plugins(ScenesPlugin)
         .insert_state(AppState::MainMenu)
         .insert_resource(AmbientLight::NONE)
         .insert_resource(FpsOverlayConfig {
-            enabled: false,
+            // enabled: false,
             ..Default::default()
         })
         .run();

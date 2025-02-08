@@ -58,6 +58,7 @@ impl Plugin for BackgroundPlugin {
 }
 
 fn init_pipeline(mut commands: Commands) {
+    commands.remove_resource::<BackgroundPipeline>();
     commands.init_resource::<BackgroundPipeline>();
 }
 
@@ -68,6 +69,7 @@ pub struct RenderBackground;
 struct BackgroundGlobals {
     time: f32,
     texture_size: Vec2,
+    seed: f32,
 }
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
@@ -87,11 +89,11 @@ impl ViewNode for BackgroundNode {
         world: &World,
     ) -> Result<(), NodeRunError> {
         let render_queue = world.resource::<RenderQueue>();
-        let Some(post_process_pipeline) = world.get_resource::<BackgroundPipeline>() else {
+        let Some(background_pipeline) = world.get_resource::<BackgroundPipeline>() else {
             return Ok(());
         };
         let pipeline_cache = world.resource::<PipelineCache>();
-        let Some(pipeline) = pipeline_cache.get_render_pipeline(post_process_pipeline.pipeline_id)
+        let Some(pipeline) = pipeline_cache.get_render_pipeline(background_pipeline.pipeline_id)
         else {
             return Ok(());
         };
@@ -106,6 +108,7 @@ impl ViewNode for BackgroundNode {
             UniformBuffer::from(BackgroundGlobals {
                 time,
                 texture_size: Vec2::new(width as f32, height as f32),
+                seed: background_pipeline.seed,
             })
         };
 
@@ -113,7 +116,7 @@ impl ViewNode for BackgroundNode {
 
         let bind_group = render_context.render_device().create_bind_group(
             "background_bind_group",
-            &post_process_pipeline.layout,
+            &background_pipeline.layout,
             &BindGroupEntries::single(&globals),
         );
 
@@ -141,6 +144,7 @@ impl ViewNode for BackgroundNode {
 struct BackgroundPipeline {
     layout: BindGroupLayout,
     pipeline_id: CachedRenderPipelineId,
+    seed: f32,
 }
 
 impl FromWorld for BackgroundPipeline {
@@ -185,6 +189,7 @@ impl FromWorld for BackgroundPipeline {
         Self {
             layout,
             pipeline_id,
+            seed: rand::random(),
         }
     }
 }

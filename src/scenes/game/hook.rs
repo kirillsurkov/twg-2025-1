@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::components::material_modifier::MaterialModifier;
+use crate::{components::material_modifier::MaterialModifier, scenes::AppState};
 
 use super::{
     game_cursor::{update_cursor, CursorLayer, GameCursor},
@@ -26,7 +26,8 @@ impl Plugin for HookPlugin {
                     .chain()
                     .run_if(resource_exists::<GameCursor>)
                     .after(update_cursor),
-            ),
+            )
+                .run_if(in_state(AppState::Game)),
         );
     }
 }
@@ -84,7 +85,7 @@ fn init(
                         LoadingState::Done { body, head },
                         HookState::Idle,
                     ))
-                    .add_child(body);
+                    .add_children(&[body, head]);
             }
             _ => {}
         }

@@ -1,12 +1,14 @@
 use bevy::{gltf::GltfMaterialName, prelude::*};
 
+use crate::scenes::AppState;
+
 use super::{map_state::MapState, room::RoomFloorMaterial};
 
 pub struct PrimaryBlockPlugin;
 
 impl Plugin for PrimaryBlockPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, init_primary_block);
+        app.add_systems(Update, init_primary_block.run_if(in_state(AppState::Game)));
     }
 }
 
@@ -28,8 +30,6 @@ fn init_primary_block(
     primary_blocks: Query<(Entity, &PrimaryBlock, Option<&LoadingState>)>,
     children: Query<&Children>,
     gltf_materials: Query<&GltfMaterialName>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
     mut room_locations: ResMut<MapState>,
 ) {
     for (entity, primary_block, state) in primary_blocks.iter() {
@@ -40,8 +40,6 @@ fn init_primary_block(
                     .insert(SceneRoot(
                         asset_server.load(GltfAssetLabel::Scene(0).from_asset("room.glb")),
                     ))
-                    // .insert(Mesh3d(meshes.add(Cuboid::from_length(2.0))))
-                    // .insert(MeshMaterial3d(materials.add(StandardMaterial::default())))
                     .insert(Transform::from_xyz(
                         primary_block.x as f32 * 2.01,
                         primary_block.y as f32 * 2.01,

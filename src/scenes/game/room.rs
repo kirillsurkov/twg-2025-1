@@ -5,8 +5,14 @@ use bevy::{
     render::render_resource::{AsBindGroup, ShaderRef, ShaderType},
 };
 
-use crate::components::{
-    material_modifier::{MaterialModifier, MaterialModifierPlugin}, procedural_material::{ExtendedProceduralMaterial, ProceduralMaterial, ProceduralMaterialPlugin},
+use crate::{
+    components::{
+        material_modifier::{MaterialModifier, MaterialModifierPlugin},
+        procedural_material::{
+            ExtendedProceduralMaterial, ProceduralMaterial, ProceduralMaterialPlugin,
+        },
+    },
+    scenes::{AppSceneRoot, AppState},
 };
 
 use super::{
@@ -49,7 +55,8 @@ impl Plugin for RoomPlugin {
                     )
                         .chain(),
                 )
-                    .chain(),
+                    .chain()
+                    .run_if(in_state(AppState::Game)),
             );
     }
 }
@@ -219,6 +226,7 @@ fn state_construct(
     mut next_player_state: ResMut<NextState<PlayerState>>,
     mut map_state: ResMut<MapState>,
     mut rooms: Query<(&mut Room, &mut RoomState)>,
+    root_entity: Res<AppSceneRoot>,
     game_cursor: Res<GameCursor>,
     room_interaction: Option<Res<RoomBuildEntity>>,
     time: Res<Time>,
@@ -233,6 +241,7 @@ fn state_construct(
                 },
             ))
             .id();
+        commands.entity(root_entity.world).add_child(entity);
         commands.insert_resource(RoomBuildEntity(entity));
         return;
     };

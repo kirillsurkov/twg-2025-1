@@ -3,12 +3,16 @@ use bevy::{
     utils::{HashMap, HashSet},
 };
 
+use crate::scenes::AppState;
+
 pub struct MapStatePlugin;
 
 impl Plugin for MapStatePlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(MapState::default())
-            .add_systems(PreUpdate, check_connectivity);
+        app.insert_resource(MapState::default()).add_systems(
+            PreUpdate,
+            check_connectivity.run_if(in_state(AppState::Game)),
+        );
     }
 }
 

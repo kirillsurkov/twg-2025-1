@@ -6,17 +6,20 @@ use bevy::{
     prelude::*,
 };
 
-use crate::components::background::{BackgroundPluginSettings, RenderBackground};
+use crate::{
+    components::background::{BackgroundPluginSettings, RenderBackground},
+    scenes::{AppSceneRoot, AppState},
+};
 
 pub struct GameCameraPlugin(pub Vec3);
 
 impl Plugin for GameCameraPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup)
-            .add_systems(Update, camera_control)
-            .insert_resource(BackgroundPluginSettings {
-                shader: "stars.wgsl".to_string(),
-            })
+        app.add_systems(OnEnter(AppState::Game), setup)
+            .add_systems(
+                Update,
+                camera_control.run_if(in_state(AppState::Game).and(any_with_component::<Camera>)),
+            )
             .insert_resource(TargetPos(self.0));
     }
 }
@@ -24,8 +27,12 @@ impl Plugin for GameCameraPlugin {
 #[derive(Resource, Deref, DerefMut)]
 struct TargetPos(Vec3);
 
-fn setup(mut commands: Commands, target_pos: Res<TargetPos>) {
-    commands.spawn((
+fn setup(mut commands: Commands, root_entity: Res<AppSceneRoot>, target_pos: Res<TargetPos>) {
+    commands.insert_resource(BackgroundPluginSettings {
+        shader: "stars.wgsl".to_string(),
+    });
+
+    commands.entity(root_entity.world).with_child((
         Camera3d::default(),
         Camera {
             hdr: true,
@@ -46,11 +53,13 @@ fn setup(mut commands: Commands, target_pos: Res<TargetPos>) {
 
 fn camera_control(
     mut wheel: EventReader<MouseWheel>,
-    mut camera: Query<&mut Transform, With<Camera3d>>,
     mut target_pos: ResMut<TargetPos>,
+    mut camera: Query<Option<&mut Transform>, With<Camera3d>>,
     time: Res<Time>,
 ) {
-    let mut camera = camera.single_mut();
+    let Ok(Some(mut camera)) = camera.get_single_mut() else {
+        return;
+    };
 
     for event in wheel.read() {
         **target_pos = **target_pos - Vec3::new(0.0, 0.0, event.y);

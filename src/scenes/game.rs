@@ -1,15 +1,15 @@
-use bevy::{audio::PlaybackMode, dev_tools::fps_overlay::FpsOverlayConfig, prelude::*};
+use bevy::prelude::*;
 use camera::GameCameraPlugin;
 use game_cursor::GameCursorPlugin;
 use hook::{Hook, HookPlugin};
-use light_consts::lux::{AMBIENT_DAYLIGHT, CLEAR_SUNRISE};
+use light_consts::lux::CLEAR_SUNRISE;
 use map_state::MapStatePlugin;
 use player::PlayerPlugin;
 use primary_block::{PrimaryBlock, PrimaryBlockPlugin};
 use rock::RockPlugin;
 use room::RoomPlugin;
 
-use crate::AppState;
+use super::{AppSceneRoot, AppState};
 
 mod camera;
 mod game_cursor;
@@ -33,12 +33,11 @@ impl Plugin for GamePlugin {
             .add_plugins(RockPlugin)
             .add_plugins(HookPlugin)
             .add_systems(OnEnter(AppState::Game), setup)
-            .add_systems(OnExit(AppState::Game), cleanup)
             .insert_state(GameState::Idle);
     }
 }
 
-fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn setup(mut commands: Commands, root_entity: Res<AppSceneRoot>) {
     let directional_light = |x, y| {
         (
             DirectionalLight {
@@ -50,12 +49,13 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         )
     };
 
-    commands.spawn(directional_light(1.0, 1.0));
-    commands.spawn(directional_light(1.0, -1.0));
-    commands.spawn(directional_light(-1.0, 1.0));
-    commands.spawn(directional_light(-1.0, -1.0));
-
-    commands.spawn(PrimaryBlock { x: 0, y: 0 }).with_child(Hook);
+    commands.entity(root_entity.world).with_children(|root| {
+        root.spawn(directional_light(1.0, 1.0));
+        root.spawn(directional_light(1.0, -1.0));
+        root.spawn(directional_light(-1.0, 1.0));
+        root.spawn(directional_light(-1.0, -1.0));
+        root.spawn(PrimaryBlock { x: 0, y: 0 }).with_child(Hook);
+    });
 
     // commands.spawn((
     //     AudioPlayer::new(asset_server.load("Cojam - Milky Main Menu.ogg")),
@@ -66,8 +66,6 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     //     },
     // ));
 }
-
-fn cleanup() {}
 
 #[derive(States, Debug, Hash, PartialEq, Eq, Clone)]
 enum GameState {

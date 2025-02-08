@@ -9,6 +9,7 @@ use rand_distr::{weighted::WeightedIndex, Distribution};
 
 use crate::{
     components::procedural_material::{ProceduralMaterial, ProceduralMaterialPlugin},
+    scenes::{AppSceneRoot, AppState},
     RandomRotation,
 };
 
@@ -22,7 +23,10 @@ pub struct RockPlugin;
 impl Plugin for RockPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(ProceduralMaterialPlugin::<RockMaterial>::default())
-            .add_systems(Update, (init, update_pos, rock_spawner.after(init)))
+            .add_systems(
+                Update,
+                (init, update_pos, rock_spawner.after(init)).run_if(in_state(AppState::Game)),
+            )
             .insert_resource(RockMapState {
                 rocks: HashMap::new(),
             });
@@ -204,6 +208,7 @@ fn update_pos(
 
 fn rock_spawner(
     mut commands: Commands,
+    root_entity: Res<AppSceneRoot>,
     map_state: Res<MapState>,
     time: Res<Time>,
     mut last_spawned: Local<f32>,
@@ -254,7 +259,7 @@ fn rock_spawner(
         }
     }
 
-    commands.spawn((
+    commands.entity(root_entity.world).with_child((
         Rock {
             movement_speed: flight_dir.extend(0.0).normalize() * rng.random_range(1.0..3.0),
             rotation_speed: rng.random_range(-1.0..1.0),

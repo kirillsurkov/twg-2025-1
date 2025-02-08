@@ -1,10 +1,12 @@
 use bevy::{dev_tools::fps_overlay::FpsOverlayConfig, prelude::*};
 
+use crate::scenes::AppState;
+
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, listen_inputs)
+        app.add_systems(Update, listen_inputs.run_if(in_state(AppState::Game)))
             .insert_state(PlayerState::Idle);
     }
 }
