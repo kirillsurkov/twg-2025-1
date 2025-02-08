@@ -28,14 +28,12 @@ pub struct GameCursor {
 
 pub enum CursorLayer {
     Room,
-    Hook,
 }
 
 impl CursorLayer {
     pub fn size(&self) -> f32 {
         match self {
             Self::Room => 2.01,
-            Self::Hook => 1.0,
         }
     }
 }

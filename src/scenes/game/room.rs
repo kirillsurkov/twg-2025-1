@@ -4,6 +4,7 @@ use bevy::{
     prelude::*,
     render::render_resource::{AsBindGroup, ShaderRef, ShaderType},
 };
+use bevy_rapier2d::prelude::*;
 
 use crate::{
     components::{
@@ -109,6 +110,9 @@ fn init_room(
                     SceneRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset("room.glb"))),
                     LoadingState::Materials,
                     Visibility::Hidden,
+                    Collider::cuboid(1.0, 1.0),
+                    ActiveEvents::COLLISION_EVENTS,
+                    ActiveCollisionTypes::STATIC_STATIC,
                 ));
             }
             Some(LoadingState::Materials) => {

@@ -1,14 +1,16 @@
 use std::f32::consts::{FRAC_PI_4, FRAC_PI_8, SQRT_2, TAU};
 
-use bevy::{
-    gltf::GltfMaterialName, prelude::*, render::render_resource::ShaderType, utils::HashMap,
-};
+use bevy::{gltf::GltfMaterialName, prelude::*, render::render_resource::ShaderType};
+use bevy_rapier2d::prelude::*;
 use ops::FloatPow;
 use rand::Rng;
 use rand_distr::{weighted::WeightedIndex, Distribution};
 
 use crate::{
-    components::procedural_material::{ProceduralMaterial, ProceduralMaterialPlugin},
+    components::{
+        collisions::Collisions,
+        procedural_material::{ProceduralMaterial, ProceduralMaterialPlugin},
+    },
     scenes::{AppSceneRoot, AppState},
     RandomRotation,
 };
@@ -16,6 +18,7 @@ use crate::{
 use super::{
     game_cursor::{CursorLayer, GameCursor},
     map_state::{MapLayer, MapState},
+    room::Room,
 };
 
 pub struct RockPlugin;
@@ -26,25 +29,7 @@ impl Plugin for RockPlugin {
             .add_systems(
                 Update,
                 (init, update_pos, rock_spawner.after(init)).run_if(in_state(AppState::Game)),
-            )
-            .insert_resource(RockMapState {
-                rocks: HashMap::new(),
-            });
-    }
-}
-
-#[derive(Resource)]
-pub struct RockMapState {
-    rocks: HashMap<IVec2, Entity>,
-}
-
-impl RockMapState {
-    fn add(&mut self, x: i32, y: i32, entity: Entity) {
-        self.rocks.insert(IVec2::new(x, y), entity);
-    }
-
-    pub fn rock(&self, x: i32, y: i32) -> Option<Entity> {
-        self.rocks.get(&IVec2::new(x, y)).cloned()
+            );
     }
 }
 
@@ -87,6 +72,9 @@ fn init(
                     LoadingState::Materials,
                     RockState::Idle,
                     Visibility::Hidden,
+                    Collider::ball(1.0),
+                    ActiveEvents::COLLISION_EVENTS,
+                    ActiveCollisionTypes::STATIC_STATIC,
                 ));
             }
             Some(LoadingState::Materials) => {
@@ -159,14 +147,13 @@ fn update_pos(
     mut commands: Commands,
     mut rocks: Query<(Entity, &Rock, &RockState, &mut Transform)>,
     mut map_state: ResMut<MapState>,
-    mut rock_map_state: ResMut<RockMapState>,
+    rooms: Query<&Room>,
+    collisions: Res<Collisions>,
     time: Res<Time>,
 ) {
     let (min, max) = map_state.get_bounds();
     let min = Vec2::from(GameCursor::game_to_world(min.x, min.y, CursorLayer::Room)) - 40.0;
     let max = Vec2::from(GameCursor::game_to_world(max.x, max.y, CursorLayer::Room)) + 40.0;
-
-    rock_map_state.rocks.clear();
 
     for (entity, rock, rock_state, mut transform) in rocks.iter_mut() {
         if transform.translation.x <= min.x
@@ -188,21 +175,12 @@ fn update_pos(
             TAU * rock.rotation_speed * time.delta_secs(),
         );
 
-        let pos = GameCursor::world_to_game(
-            transform.translation.x,
-            transform.translation.y,
-            CursorLayer::Room,
-        );
-        if map_state.room(pos.x, pos.y, MapLayer::Main) {
-            map_state.remove(pos.x, pos.y, MapLayer::Main);
-            commands.entity(entity).try_despawn_recursive();
+        for room in collisions.get(entity) {
+            if let Ok(Room::Fixed(x, y)) = rooms.get(*room) {
+                map_state.remove(*x, *y, MapLayer::Main);
+                commands.entity(entity).try_despawn_recursive();
+            }
         }
-        let pos = GameCursor::world_to_game(
-            transform.translation.x,
-            transform.translation.y,
-            CursorLayer::Hook,
-        );
-        rock_map_state.add(pos.x, pos.y, entity);
     }
 }
 

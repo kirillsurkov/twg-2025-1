@@ -1,11 +1,15 @@
 use bevy::prelude::*;
+use bevy_rapier2d::prelude::*;
 
-use crate::{components::material_modifier::MaterialModifier, scenes::AppState};
+use crate::{
+    components::{collisions::Collisions, material_modifier::MaterialModifier},
+    scenes::AppState,
+};
 
 use super::{
     game_cursor::{update_cursor, CursorLayer, GameCursor},
     player::{PlayerInteractEntity, PlayerState},
-    rock::{RockMapState, RockState},
+    rock::RockState,
 };
 
 pub struct HookPlugin;
@@ -16,11 +20,12 @@ impl Plugin for HookPlugin {
             Update,
             (
                 init,
-                update.run_if(resource_exists::<RockMapState>),
+                update,
                 (
-                    user_interact
-                        .run_if(in_state(PlayerState::Interact))
-                        .run_if(resource_exists::<PlayerInteractEntity>),
+                    user_interact.run_if(
+                        in_state(PlayerState::Interact)
+                            .and(resource_exists::<PlayerInteractEntity>),
+                    ),
                     set_state.run_if(in_state(PlayerState::Idle)),
                 )
                     .chain()
@@ -72,8 +77,13 @@ fn init(
                     ))
                     .id();
                 let head = commands
-                    .spawn(SceneRoot(
-                        asset_server.load(GltfAssetLabel::Scene(0).from_asset("hook_head.glb")),
+                    .spawn((
+                        SceneRoot(
+                            asset_server.load(GltfAssetLabel::Scene(0).from_asset("hook_head.glb")),
+                        ),
+                        Collider::ball(0.33),
+                        ActiveEvents::COLLISION_EVENTS,
+                        ActiveCollisionTypes::STATIC_STATIC,
                     ))
                     .id();
                 commands
@@ -136,7 +146,6 @@ fn set_state(
 
 fn user_interact(
     mut commands: Commands,
-    mut materials: ResMut<Assets<StandardMaterial>>,
     game_cursor: Option<Res<GameCursor>>,
     interact: Res<PlayerInteractEntity>,
     mut hooks: Query<(&LoadingState, &mut HookState, &GlobalTransform), With<Hook>>,
@@ -179,7 +188,7 @@ fn update(
     mut hook_bodies: Query<(&GlobalTransform, &mut Visibility), Without<RockState>>,
     mut rocks: Query<(&mut RockState, &mut Transform)>,
     mut transforms: Query<&mut Transform, Without<RockState>>,
-    rock_map_state: ResMut<RockMapState>,
+    collisions: Res<Collisions>,
     time: Res<Time>,
 ) {
     for (loading_state, mut hook_state) in hooks.iter_mut() {
@@ -253,26 +262,18 @@ fn update(
         head_transform.translation = dir.extend(0.0) * length.max(0.2);
         head_transform.translation.z = 2.0;
 
-        match *hook_state {
-            HookState::Flying { dir, length } => {
-                let pos = GameCursor::world_to_game(
-                    origin.x + body_transform.translation.x,
-                    origin.y + body_transform.translation.y,
-                    CursorLayer::Hook,
-                );
-
-                if let Some(entity) = rock_map_state.rock(pos.x, pos.y) {
+        if let HookState::Flying { dir, length } = *hook_state {
+            for rock in collisions.get(head) {
+                if let Ok((mut rock_state, _)) = rocks.get_mut(*rock) {
                     *hook_state = HookState::Returning {
                         dir,
                         length,
-                        rock: Some(entity),
+                        rock: Some(*rock),
                     };
-                    if let Ok((mut rock_state, _)) = rocks.get_mut(entity) {
-                        *rock_state = RockState::Hooked;
-                    }
+                    *rock_state = RockState::Hooked;
+                    break;
                 }
             }
-            _ => {}
         }
     }
 }

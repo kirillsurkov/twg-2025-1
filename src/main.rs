@@ -5,10 +5,11 @@ use bevy::{
     prelude::*,
 };
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
-use components::{
-    background::BackgroundPlugin, material_modifier::MaterialModifierPlugin,
-    update_material_textures::UpdateMaterialTexturesPlugin, ComponentsPlugin,
+use bevy_rapier2d::{
+    plugin::{NoUserData, RapierPhysicsPlugin},
+    render::RapierDebugRenderPlugin,
 };
+use components::ComponentsPlugin;
 use noisy_bevy::NoisyShaderPlugin;
 use rand::Rng;
 use scenes::AppScenesPlugin;
@@ -55,8 +56,8 @@ fn main() {
         .add_plugins(NoisyShaderPlugin)
         .add_plugins(ComponentsPlugin)
         .add_plugins(AppScenesPlugin)
-        .add_plugins(ScenesPlugin)
-        .insert_state(AppState::MainMenu)
+        .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
+        // .add_plugins(RapierDebugRenderPlugin::default())
         .insert_resource(AmbientLight::NONE)
         .insert_resource(FpsOverlayConfig {
             // enabled: false,
