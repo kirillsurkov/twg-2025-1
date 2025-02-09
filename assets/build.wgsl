@@ -12,6 +12,7 @@
 struct BuildMaterialSettings {
     created: f32,
     color: vec4<f32>,
+    direction: f32,
 }
 
 @group(2) @binding(100)
@@ -28,7 +29,13 @@ fn fragment(
     const HEIGHT = ABOVE + BELOW;
     const LINE = 0.2;
 
-    let elapsed = min(1.0, (globals.time - material_settings.created) / DURATION);
+    let sample_from = -material_settings.direction;
+    let sample_to = material_settings.direction;
+
+    var elapsed = min(1.0, (globals.time - material_settings.created) / DURATION);
+    elapsed = sample_from + (sample_to - sample_from) * elapsed;
+    elapsed = elapsed * 0.5 + 0.5;
+
     let noise = mix(fbm_simplex_3d(in.world_position.xyz, 2, 4.0, 4.0, false) * LINE * 0.5, 1.0, elapsed);
 
     let edge = (HEIGHT + LINE) * noise - BELOW;

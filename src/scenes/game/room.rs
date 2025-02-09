@@ -398,6 +398,7 @@ fn update_room_material(
                                         HighlightState::Red => highlight_red,
                                         _ => highlight_green,
                                     },
+                                    direction: 1.0,
                                 },
                             },
                         }
@@ -405,21 +406,21 @@ fn update_room_material(
                     .insert(floor_inactive);
             }
             (ActionState::Destruct(created), _) => {
-                let elapsed = (time.elapsed_secs() - created).max(0.0).min(3.0);
-                let alpha = 1.0 - elapsed / 3.0;
-                entity
-                    .insert(MaterialModifier::new(move |mut mat: StandardMaterial| {
-                        mat.base_color.set_alpha(alpha);
-                        mat.alpha_mode = AlphaMode::Blend;
-                        mat
-                    }))
-                    .insert(MaterialModifier::new(
-                        move |mut mat: ExtendedProceduralMaterial| {
-                            mat.base.base_color.set_alpha(alpha);
-                            mat.base.emissive = LinearRgba::NONE;
+                entity.insert(MaterialModifier::new({
+                    move |mut mat: StandardMaterial| ExtendedMaterial {
+                        base: {
+                            mat.alpha_mode = AlphaMode::Blend;
                             mat
                         },
-                    ));
+                        extension: BuildMaterial {
+                            settings: BuildMaterialSettings {
+                                created,
+                                color: highlight_red,
+                                direction: -1.0,
+                            },
+                        },
+                    }
+                }));
             }
         }
     }
@@ -447,7 +448,10 @@ fn update_room_state(
         }
         if let Room::Fixed(x, y) = &*room {
             let is_build = build_entity.as_ref().is_some_and(|b| b.0 == entity);
-            if !is_build && !map_state.room(*x, *y, MapLayer::Main) {
+            if !is_build
+                && !map_state.room(*x, *y, MapLayer::Main)
+                && !matches!(room_state.action, ActionState::Destruct(_))
+            {
                 room_state.action =
                     ActionState::Destruct(time.elapsed_secs() + rand::random::<f32>() * 0.5);
             }
@@ -456,21 +460,8 @@ fn update_room_state(
             ActionState::Construct(created) if elapsed - created >= 3.0 => {
                 room_state.action = ActionState::Idle
             }
-            ActionState::Destruct(created) => {
-                let elapsed = (elapsed - created).max(0.0);
-                if elapsed >= 3.0 {
-                    commands.entity(entity).despawn_recursive();
-                    continue;
-                }
-                let pos = match *room {
-                    Room::Fixed(x, y) => GameCursor::game_to_world(x, y, CursorLayer::Room),
-                    Room::Floating(x, y, _) => Vec2::new(x, y),
-                };
-                *room = Room::Floating(
-                    pos.x - delta * elapsed * 2.0,
-                    pos.y,
-                    -elapsed * elapsed * 4.0,
-                );
+            ActionState::Destruct(created) if elapsed - created >= 3.0 => {
+                commands.entity(entity).despawn_recursive();
             }
             _ => {}
         }
@@ -512,6 +503,7 @@ impl ProceduralMaterial for RoomFloorMaterial {
 struct BuildMaterialSettings {
     created: f32,
     color: LinearRgba,
+    direction: f32,
 }
 
 #[derive(Asset, AsBindGroup, Reflect, Debug, Clone)]
