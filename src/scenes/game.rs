@@ -54,7 +54,7 @@ fn setup(mut commands: Commands, root_entity: Res<AppSceneRoot>) {
         root.spawn(directional_light(1.0, -1.0));
         root.spawn(directional_light(-1.0, 1.0));
         root.spawn(directional_light(-1.0, -1.0));
-        root.spawn(PrimaryBlock { x: 0, y: 0 }).with_child(Hook);
+        root.spawn(PrimaryBlock { x: 0, y: 0 }).with_child(Hook(false));
     });
 
     // commands.spawn((

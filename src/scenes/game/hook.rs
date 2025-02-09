@@ -1,5 +1,8 @@
-use bevy::prelude::*;
+use core::f32;
+
+use bevy::{prelude::*, utils::HashSet};
 use bevy_rapier2d::prelude::*;
+use rand_distr::num_traits::Zero;
 
 use crate::{
     components::{collisions::Collisions, material_modifier::MaterialModifier},
@@ -9,7 +12,7 @@ use crate::{
 use super::{
     game_cursor::{update_cursor, CursorLayer, GameCursor},
     player::{PlayerInteractEntity, PlayerState},
-    rock::RockState,
+    rock::{Rock, RockState},
 };
 
 pub struct HookPlugin;
@@ -38,7 +41,7 @@ impl Plugin for HookPlugin {
 }
 
 #[derive(Component)]
-pub struct Hook;
+pub struct Hook(pub bool);
 
 #[derive(Component)]
 enum HookState {
@@ -56,7 +59,11 @@ enum HookState {
 
 #[derive(Component, PartialEq)]
 enum LoadingState {
-    Done { body: Entity, head: Entity },
+    Done {
+        body: Entity,
+        head: Entity,
+        radar: Entity,
+    },
 }
 
 fn init(
@@ -86,16 +93,24 @@ fn init(
                         ActiveCollisionTypes::STATIC_STATIC,
                     ))
                     .id();
+                let radar = commands
+                    .spawn((
+                        Transform::default(),
+                        Collider::ball(9.5),
+                        ActiveEvents::COLLISION_EVENTS,
+                        ActiveCollisionTypes::STATIC_STATIC,
+                    ))
+                    .id();
                 commands
                     .entity(entity)
                     .insert((
                         SceneRoot(
                             asset_server.load(GltfAssetLabel::Scene(0).from_asset("hook_base.glb")),
                         ),
-                        LoadingState::Done { body, head },
+                        LoadingState::Done { body, head, radar },
                         HookState::Idle,
                     ))
-                    .add_children(&[body, head]);
+                    .add_children(&[body, head, radar]);
             }
             _ => {}
         }
@@ -184,15 +199,16 @@ fn user_interact(
 
 fn update(
     mut commands: Commands,
-    mut hooks: Query<(&LoadingState, &mut HookState), With<Hook>>,
+    mut hooks: Query<(&Hook, &LoadingState, &mut HookState), With<Hook>>,
     mut hook_bodies: Query<(&GlobalTransform, &mut Visibility), Without<RockState>>,
-    mut rocks: Query<(&mut RockState, &mut Transform)>,
+    mut rocks: Query<(&Rock, &mut RockState, &mut Transform)>,
     mut transforms: Query<&mut Transform, Without<RockState>>,
+    mut targeted_rocks: Local<HashSet<Entity>>,
     collisions: Res<Collisions>,
     time: Res<Time>,
 ) {
-    for (loading_state, mut hook_state) in hooks.iter_mut() {
-        let LoadingState::Done { body, head } = *loading_state;
+    for (Hook(automatic), loading_state, mut hook_state) in hooks.iter_mut() {
+        let LoadingState::Done { body, head, radar } = *loading_state;
 
         let Ok((global_transform, mut visibility)) = hook_bodies.get_mut(body) else {
             continue;
@@ -208,7 +224,7 @@ fn update(
         let speed = 15.0;
         let max_length = 10.0;
 
-        let origin = global_transform.translation();
+        let origin = global_transform.translation().xy();
 
         let (dir, length) = match *hook_state {
             HookState::Idle => {
@@ -237,14 +253,18 @@ fn update(
                 length -= time.delta_secs() * speed;
                 *hook_state = if length <= 0.0 {
                     if let Some(rock) = rock {
-                        commands.entity(rock).despawn_recursive();
+                        if let Some(rock) = commands.get_entity(rock) {
+                            targeted_rocks.remove(&rock.id());
+                            rock.despawn_recursive();
+                        }
                     }
                     length = 0.0;
                     HookState::Idle
                 } else {
                     if let Some(rock) = rock {
-                        if let Ok((_, mut transform)) = rocks.get_mut(rock) {
-                            transform.translation = origin + dir.extend(0.0) * (length + 1.0) * 0.5;
+                        if let Ok((_, _, mut transform)) = rocks.get_mut(rock) {
+                            transform.translation =
+                                (origin + dir * (length + 1.0) * 0.5).extend(2.0);
                         }
                     }
                     HookState::Returning { dir, length, rock }
@@ -262,18 +282,65 @@ fn update(
         head_transform.translation = dir.extend(0.0) * length.max(0.2);
         head_transform.translation.z = 2.0;
 
-        if let HookState::Flying { dir, length } = *hook_state {
-            for rock in collisions.get(head) {
-                if let Ok((mut rock_state, _)) = rocks.get_mut(*rock) {
-                    *hook_state = HookState::Returning {
-                        dir,
-                        length,
-                        rock: Some(*rock),
-                    };
-                    *rock_state = RockState::Hooked;
-                    break;
+        match *hook_state {
+            HookState::Flying { dir, length } => {
+                for rock in collisions.get(head) {
+                    if let Ok((_, mut rock_state, _)) = rocks.get_mut(*rock) {
+                        let RockState::Idle = *rock_state else {
+                            continue;
+                        };
+                        *hook_state = HookState::Returning {
+                            dir,
+                            length,
+                            rock: Some(*rock),
+                        };
+                        *rock_state = RockState::Hooked;
+                        break;
+                    }
                 }
             }
+            HookState::Idle if *automatic => {
+                let mut target: Option<(Entity, Vec2)> = None;
+                for entity in collisions.get(radar) {
+                    if targeted_rocks.contains(entity) {
+                        continue;
+                    }
+                    if let Ok((rock, rock_state, transform)) = rocks.get(*entity) {
+                        let RockState::Idle = *rock_state else {
+                            continue;
+                        };
+                        let delta = transform.translation.xy() - origin;
+                        let a = rock.movement_speed.length_squared() - speed * speed;
+                        let b = 2.0 * delta.length() * rock.movement_speed.length();
+                        let c = delta.length_squared();
+                        let time = if a.is_zero() {
+                            (c / b).abs()
+                        } else {
+                            let d = b * b - 4.0 * a * c;
+                            ((d.sqrt() - b) / (2.0 * a)).abs()
+                        };
+                        let intersection = transform.translation.xy() + rock.movement_speed * time;
+                        target = if let Some((_, pos)) = target {
+                            let distance1 = pos.distance_squared(origin);
+                            let distance2 = intersection.distance_squared(origin);
+                            if distance1 < distance2 {
+                                Some((*entity, intersection))
+                            } else {
+                                None
+                            }
+                        } else {
+                            Some((*entity, intersection))
+                        };
+                    }
+                }
+                if let Some((entity, pos)) = target {
+                    if let Ok(dir) = Dir2::new(pos - origin) {
+                        targeted_rocks.insert(entity);
+                        *hook_state = HookState::Flying { dir, length: 0.0 }
+                    }
+                }
+            }
+            _ => {}
         }
     }
 }

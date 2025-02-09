@@ -35,7 +35,7 @@ impl Plugin for RockPlugin {
 
 #[derive(Component)]
 pub struct Rock {
-    movement_speed: Vec3,
+    pub movement_speed: Vec2,
     rotation_speed: f32,
     rotation_axis: Dir3,
 }
@@ -169,7 +169,7 @@ fn update_pos(
             continue;
         }
 
-        transform.translation += rock.movement_speed * time.delta_secs();
+        transform.translation += rock.movement_speed.extend(0.0) * time.delta_secs();
         transform.rotate_axis(
             rock.rotation_axis,
             TAU * rock.rotation_speed * time.delta_secs(),
@@ -239,7 +239,7 @@ fn rock_spawner(
 
     commands.entity(root_entity.world).with_child((
         Rock {
-            movement_speed: flight_dir.extend(0.0).normalize() * rng.random_range(1.0..3.0),
+            movement_speed: flight_dir.normalize() * rng.random_range(1.0..3.0),
             rotation_speed: rng.random_range(-1.0..1.0),
             rotation_axis: Transform::from_rotation(Quat::random()).forward(),
         },

@@ -18,6 +18,7 @@ use crate::{
 
 use super::{
     game_cursor::{CursorLayer, GameCursor},
+    hook::Hook,
     map_state::{MapLayer, MapState},
     player::PlayerState,
 };
@@ -269,6 +270,7 @@ fn state_construct(
     }
 
     if available && game_cursor.just_pressed {
+        commands.entity(*entity).with_child(Hook(true));
         room_state.action = ActionState::Construct(time.elapsed_secs());
         room_state.highlight = HighlightState::None;
         next_player_state.set(PlayerState::Idle);
