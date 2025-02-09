@@ -5,7 +5,8 @@ use bevy::{
 
 use crate::components::{
     background::{BackgroundPluginSettings, RenderBackground},
-    game_button::{GameButton, GameButtonClicked},
+    clicked_event::Clicked,
+    game_button::GameButton,
 };
 
 use super::{AppSceneRoot, AppState};
@@ -42,26 +43,24 @@ fn setup(mut commands: Commands, root_entity: Res<AppSceneRoot>) {
     let new_game = commands
         .spawn(GameButton::new("New game", 200.0))
         .observe(
-            |_: Trigger<GameButtonClicked>, mut next: ResMut<NextState<AppState>>| {
-                next.set(AppState::Game)
-            },
+            |_: Trigger<Clicked>, mut next: ResMut<NextState<AppState>>| next.set(AppState::Game),
         )
         .id();
     let settings = commands
         .spawn(GameButton::new("Settings", 200.0))
-        .observe(|trigger: Trigger<GameButtonClicked>| {
+        .observe(|trigger: Trigger<Clicked>| {
             println!("clicked settings");
         })
         .id();
     let about = commands
         .spawn(GameButton::new("About", 200.0))
-        .observe(|trigger: Trigger<GameButtonClicked>| {
+        .observe(|trigger: Trigger<Clicked>| {
             println!("clicked about");
         })
         .id();
     let exit = commands
         .spawn(GameButton::new("Exit", 0.0))
-        .observe(|trigger: Trigger<GameButtonClicked>| {
+        .observe(|trigger: Trigger<Clicked>| {
             println!("clicked exit");
         })
         .id();

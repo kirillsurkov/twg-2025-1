@@ -27,9 +27,10 @@ fn listen_inputs(
     mut next_state: ResMut<NextState<PlayerState>>,
     state: Res<State<PlayerState>>,
     keyboard: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
     fps_overlay_config: Res<FpsOverlayConfig>,
 ) {
-    if keyboard.just_pressed(KeyCode::Escape) {
+    if keyboard.just_pressed(KeyCode::Escape) || mouse.just_pressed(MouseButton::Right) {
         match state.get() {
             PlayerState::Idle => {}
             _ => next_state.set(PlayerState::Idle),

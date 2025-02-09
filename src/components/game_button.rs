@@ -6,6 +6,8 @@ use bevy::{
     prelude::*,
 };
 
+use super::clicked_event::Clicked;
+
 pub struct GameButtonPlugin;
 
 impl Plugin for GameButtonPlugin {
@@ -20,9 +22,6 @@ pub struct GameButton {
     hue: f32,
     timer: f32,
 }
-
-#[derive(Event)]
-pub struct GameButtonClicked;
 
 impl GameButton {
     pub fn new(name: &'static str, hue: f32) -> Self {
@@ -110,7 +109,7 @@ fn animate(
             Interaction::Hovered => (game_button.timer + speed * time.delta_secs()).min(1.0),
             Interaction::Pressed => {
                 if interaction.is_changed() {
-                    commands.trigger_targets(GameButtonClicked, entity);
+                    commands.trigger_targets(Clicked, entity);
                 }
                 (game_button.timer + speed * time.delta_secs()).min(2.0)
             }

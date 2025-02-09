@@ -26,6 +26,9 @@ pub struct GameCursor {
     pub just_pressed: bool,
 }
 
+#[derive(Resource)]
+pub struct GameCursorActive;
+
 pub enum CursorLayer {
     Room,
 }
@@ -52,17 +55,22 @@ impl GameCursor {
 
 pub fn update_cursor(
     mut commands: Commands,
+    active: Option<Res<GameCursorActive>>,
     mouse: Res<ButtonInput<MouseButton>>,
     camera: Query<(&Camera, &GlobalTransform)>,
     window: Single<&Window>,
 ) {
     commands.remove_resource::<GameCursor>();
 
-    let Ok((camera, camera_transform)) = camera.get_single() else {
+    if active.is_none() {
+        return;
+    }
+
+    let Some(cursor_pos) = window.into_inner().cursor_position() else {
         return;
     };
 
-    let Some(cursor_pos) = window.into_inner().cursor_position() else {
+    let Ok((camera, camera_transform)) = camera.get_single() else {
         return;
     };
 

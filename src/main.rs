@@ -3,6 +3,7 @@ use std::f32::consts::PI;
 use bevy::{
     dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin},
     prelude::*,
+    window::WindowResized,
 };
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use bevy_rapier2d::{
@@ -12,6 +13,7 @@ use bevy_rapier2d::{
 use components::ComponentsPlugin;
 use noisy_bevy::NoisyShaderPlugin;
 use rand::Rng;
+use rand_distr::num_traits::Zero;
 use scenes::AppScenesPlugin;
 
 mod components;
@@ -42,6 +44,12 @@ impl RandomRotation for Quat {
     }
 }
 
+fn on_resize(mut commands: Commands, mut resize_reader: EventReader<WindowResized>) {
+    for e in resize_reader.read() {
+        commands.insert_resource(UiScale((e.width / 1920.0).min(1.0)));
+    }
+}
+
 fn main() {
     App::new()
         .add_plugins((DefaultPlugins.set(WindowPlugin {
@@ -63,5 +71,6 @@ fn main() {
             // enabled: false,
             ..Default::default()
         })
+        .add_systems(PreUpdate, on_resize)
         .run();
 }

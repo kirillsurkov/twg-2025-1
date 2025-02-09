@@ -52,8 +52,7 @@ impl Plugin for RoomPlugin {
                             state_idle.run_if(in_state(PlayerState::Idle)),
                             state_construct.run_if(in_state(PlayerState::Construct)),
                             state_destruct.run_if(in_state(PlayerState::Destruct)),
-                        )
-                            .run_if(resource_exists::<GameCursor>),
+                        ),
                     )
                         .chain(),
                 )
@@ -179,8 +178,8 @@ fn transit_state(
             Some(PlayerState::Construct) => {
                 if let Some(RoomBuildEntity(entity)) = build_entity.as_deref() {
                     commands.entity(*entity).despawn_recursive();
+                    commands.remove_resource::<RoomBuildEntity>();
                 }
-                commands.remove_resource::<RoomBuildEntity>();
             }
             Some(PlayerState::Destruct) => {
                 for (_, _, _, mut room_state) in rooms.iter_mut() {
@@ -193,7 +192,7 @@ fn transit_state(
 }
 
 fn state_idle(
-    game_cursor: Res<GameCursor>,
+    game_cursor: Option<Res<GameCursor>>,
     mut rooms: Query<(&Room, &LoadingState, &mut RoomState)>,
     mut floor_materials: Query<&mut RoomFloorMaterial>,
 ) {
@@ -211,7 +210,10 @@ fn state_idle(
             Room::Floating(..) => continue,
         };
 
-        let is_selected = x == game_cursor.x && y == game_cursor.y;
+        let is_selected = match game_cursor.as_ref() {
+            Some(game_cursor) => x == game_cursor.x && y == game_cursor.y,
+            _ => false,
+        };
 
         let mut floor_material = floor_materials.get_mut(*floor).unwrap();
 
@@ -232,10 +234,18 @@ fn state_construct(
     mut map_state: ResMut<MapState>,
     mut rooms: Query<(&mut Room, &mut RoomState)>,
     root_entity: Res<AppSceneRoot>,
-    game_cursor: Res<GameCursor>,
+    game_cursor: Option<Res<GameCursor>>,
     room_interaction: Option<Res<RoomBuildEntity>>,
     time: Res<Time>,
 ) {
+    let Some(game_cursor) = game_cursor.as_ref() else {
+        if let Some(RoomBuildEntity(entity)) = room_interaction.as_deref() {
+            commands.entity(*entity).despawn_recursive();
+            commands.remove_resource::<RoomBuildEntity>();
+        }
+        return;
+    };
+
     let Some(RoomBuildEntity(entity)) = room_interaction.as_deref() else {
         let entity = commands
             .spawn((
@@ -283,7 +293,7 @@ fn state_destruct(
     mut next_player_state: ResMut<NextState<PlayerState>>,
     mut map_state: ResMut<MapState>,
     mut rooms: Query<(&Room, &mut RoomState)>,
-    game_cursor: Res<GameCursor>,
+    game_cursor: Option<Res<GameCursor>>,
 ) {
     for (room, mut room_state) in rooms.iter_mut() {
         let (x, y) = match *room {
@@ -296,7 +306,16 @@ fn state_destruct(
             continue;
         }
 
-        let is_selected = x == game_cursor.x && y == game_cursor.y;
+        let is_selected = match game_cursor.as_ref() {
+            Some(game_cursor) => {
+                if game_cursor.just_pressed {
+                    map_state.remove(x, y, MapLayer::Main);
+                    next_player_state.set(PlayerState::Idle);
+                }
+                x == game_cursor.x && y == game_cursor.y
+            }
+            None => false,
+        };
 
         if is_selected && room_state.highlight != HighlightState::Red {
             room_state.highlight = HighlightState::Red;
@@ -304,15 +323,12 @@ fn state_destruct(
         if !is_selected && room_state.highlight != HighlightState::Orange {
             room_state.highlight = HighlightState::Orange;
         }
-
-        if game_cursor.just_pressed {
-            map_state.remove(x, y, MapLayer::Main);
-            next_player_state.set(PlayerState::Idle);
-        }
     }
 
     map_state.sync_build();
-    map_state.remove(game_cursor.x, game_cursor.y, MapLayer::Build);
+    if let Some(game_cursor) = game_cursor.as_ref() {
+        map_state.remove(game_cursor.x, game_cursor.y, MapLayer::Build);
+    }
 }
 
 fn update_room_material(

@@ -5,6 +5,7 @@ use game_button::GameButtonPlugin;
 use material_modifier::MaterialModifierPlugin;
 
 pub mod background;
+pub mod clicked_event;
 pub mod collisions;
 pub mod game_button;
 pub mod material_modifier;
