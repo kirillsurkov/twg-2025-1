@@ -4,7 +4,7 @@ use crate::scenes::AppState;
 
 use super::{
     game_cursor::GameCursor,
-    map_state::{MapLayer, MapState, Structure},
+    map_state::{MapLayer, MapState, MapNode},
 };
 
 pub struct PlayerPlugin;
@@ -19,7 +19,7 @@ impl Plugin for PlayerPlugin {
 #[derive(States, Debug, Hash, PartialEq, Eq, Clone)]
 pub enum PlayerState {
     Idle,
-    Construct(Structure),
+    Construct(MapNode),
     Destruct,
     Interact(i32, i32),
 }
@@ -57,7 +57,7 @@ fn listen_inputs(
 
     if let Some(game_cursor) = game_cursor {
         if *state.get() == PlayerState::Idle && game_cursor.just_pressed {
-            if map_state.node(game_cursor.x, game_cursor.y, MapLayer::Main) {
+            if map_state.is_node(game_cursor.x, game_cursor.y, MapLayer::Main) {
                 next_state.set(PlayerState::Interact(game_cursor.x, game_cursor.y));
             }
         }

@@ -16,8 +16,9 @@ use super::{
     game_cursor::{CursorLayer, GameCursor},
     generator::Generator,
     hook::Hook,
-    map_state::{MapLayer, MapState, Structure},
+    map_state::{MapLayer, MapNode, MapState},
     player::PlayerState,
+    primary_block::PrimaryBlock,
     room::Room,
 };
 
@@ -27,7 +28,7 @@ impl Plugin for BuilderPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Last,
-            (update_material, transit_state, construct, destruct, update).chain(),
+            (update_material, transit_state, construct, update, destruct).chain(),
         );
     }
 }
@@ -49,7 +50,7 @@ pub enum ActionState {
 }
 
 #[derive(Component, Clone, PartialEq)]
-pub struct StructureState {
+pub struct NodeState {
     pub highlight: HighlightState,
     pub action: ActionState,
 }
@@ -83,7 +84,7 @@ fn transit_state(
 
 fn construct(
     mut commands: Commands,
-    mut structures: Query<(&mut StructureState, &mut Transform)>,
+    mut nodes: Query<(&mut NodeState, &mut Transform)>,
     mut map_state: ResMut<MapState>,
     mut next_player_state: ResMut<NextState<PlayerState>>,
     player_state: Res<State<PlayerState>>,
@@ -100,21 +101,22 @@ fn construct(
         return;
     };
 
-    let PlayerState::Construct(structure) = player_state.get() else {
+    let PlayerState::Construct(node) = player_state.get() else {
         return;
     };
 
     let Some(BuildEntity(entity)) = build_entity.as_deref() else {
-        let entity = match structure {
-            Structure::EmptyRoom => commands.spawn(Room),
-            Structure::Furnace => commands.spawn(Furnace),
-            Structure::Generator => commands.spawn(Generator),
-            Structure::Crusher => commands.spawn(Crusher),
-            Structure::Cargo => commands.spawn(Cargo),
-            Structure::Hook => commands.spawn(Hook(true)),
-            Structure::Enrichment => commands.spawn(Enrichment),
+        let entity = match node {
+            MapNode::PrimaryBlock => commands.spawn(PrimaryBlock),
+            MapNode::EmptyRoom => commands.spawn(Room),
+            MapNode::Furnace => commands.spawn(Furnace),
+            MapNode::Generator => commands.spawn(Generator),
+            MapNode::Crusher => commands.spawn(Crusher),
+            MapNode::Cargo => commands.spawn(Cargo),
+            MapNode::Hook => commands.spawn(Hook(true)),
+            MapNode::Enrichment => commands.spawn(Enrichment),
         }
-        .insert(StructureState {
+        .insert(NodeState {
             action: ActionState::Idle,
             highlight: HighlightState::Green,
         })
@@ -125,45 +127,49 @@ fn construct(
         return;
     };
 
-    let Ok((mut structure_state, mut transform)) = structures.get_mut(*entity) else {
+    let Ok((mut node_state, mut transform)) = nodes.get_mut(*entity) else {
         return;
     };
 
-    let available = map_state.is_available(game_cursor.x, game_cursor.y, structure.clone());
+    let available = map_state.is_available(game_cursor.x, game_cursor.y, node.clone());
 
     if available {
         transform.translation =
             GameCursor::game_to_world(game_cursor.x, game_cursor.y, CursorLayer::Room).extend(0.0);
-        if structure_state.highlight != HighlightState::Green {
-            structure_state.highlight = HighlightState::Green;
+        if node_state.highlight != HighlightState::Green {
+            node_state.highlight = HighlightState::Green;
         }
     } else {
         transform.translation.x = game_cursor.fx;
         transform.translation.y = game_cursor.fy;
         transform.translation.z = 0.1;
-        if structure_state.highlight != HighlightState::Red {
-            structure_state.highlight = HighlightState::Red;
+        if node_state.highlight != HighlightState::Red {
+            node_state.highlight = HighlightState::Red;
         }
     }
 
     if available && game_cursor.just_pressed {
-        structure_state.action = ActionState::Construct(time.elapsed_secs());
-        structure_state.highlight = HighlightState::None;
+        node_state.action = ActionState::Construct(time.elapsed_secs());
+        node_state.highlight = HighlightState::None;
         next_player_state.set(PlayerState::Idle);
         commands.remove_resource::<BuildEntity>();
-        map_state.add_room(game_cursor.x, game_cursor.y);
+        map_state.add_room(game_cursor.x, game_cursor.y, node.clone());
     }
 }
 
 fn destruct(
-    mut structures: Query<(Entity, &mut StructureState, &Transform)>,
+    mut nodes: Query<(Entity, &mut NodeState, &Transform)>,
     mut map_state: ResMut<MapState>,
     mut next_player_state: ResMut<NextState<PlayerState>>,
     player_state: Res<State<PlayerState>>,
     game_cursor: Option<Res<GameCursor>>,
     build_entity: Option<Res<BuildEntity>>,
 ) {
-    for (entity, mut structure_state, transform) in structures.iter_mut() {
+    let PlayerState::Destruct = player_state.get() else {
+        return;
+    };
+
+    for (entity, mut node_state, transform) in nodes.iter_mut() {
         if build_entity.as_ref().is_some_and(|e| e.0 == entity) {
             continue;
         }
@@ -171,8 +177,8 @@ fn destruct(
         let Vec2 { x, y } = transform.translation.xy();
         let IVec2 { x, y } = GameCursor::world_to_game(x, y, CursorLayer::Room);
 
-        if map_state.room(x, y, MapLayer::Build) {
-            structure_state.highlight = HighlightState::None;
+        if map_state.is_node(x, y, MapLayer::Build) {
+            node_state.highlight = HighlightState::None;
             continue;
         }
 
@@ -180,7 +186,7 @@ fn destruct(
             Some(game_cursor) => {
                 if let PlayerState::Destruct = player_state.get() {
                     if game_cursor.just_pressed {
-                        map_state.remove(x, y, MapLayer::Main);
+                        map_state.remove_room(x, y, MapLayer::Main);
                         next_player_state.set(PlayerState::Idle);
                     }
                 }
@@ -189,27 +195,24 @@ fn destruct(
             None => false,
         };
 
-        if is_selected && structure_state.highlight != HighlightState::Red {
-            structure_state.highlight = HighlightState::Red;
+        if is_selected && node_state.highlight != HighlightState::Red {
+            node_state.highlight = HighlightState::Red;
         }
-        if !is_selected && structure_state.highlight != HighlightState::Orange {
-            structure_state.highlight = HighlightState::Orange;
+        if !is_selected && node_state.highlight != HighlightState::Orange {
+            node_state.highlight = HighlightState::Orange;
         }
     }
 
     map_state.sync_build();
     if let Some(game_cursor) = game_cursor.as_ref() {
         if let PlayerState::Destruct = player_state.get() {
-            map_state.remove(game_cursor.x, game_cursor.y, MapLayer::Build);
+            map_state.remove_room(game_cursor.x, game_cursor.y, MapLayer::Build);
         };
     }
 }
 
-fn update_material(
-    mut commands: Commands,
-    structures: Query<(Entity, &StructureState), With<Ready>>,
-) {
-    for (entity, structure_state) in structures.iter() {
+fn update_material(mut commands: Commands, nodes: Query<(Entity, &NodeState), With<Ready>>) {
+    for (entity, node_state) in nodes.iter() {
         let mut entity = commands.entity(entity);
 
         entity
@@ -236,7 +239,7 @@ fn update_material(
                 mat
             });
 
-        match (structure_state.action, structure_state.highlight) {
+        match (node_state.action, node_state.highlight) {
             (ActionState::Idle, HighlightState::None) => {}
             (ActionState::Idle, HighlightState::White) => {
                 entity
@@ -319,7 +322,7 @@ fn update_material(
 
 fn update(
     mut commands: Commands,
-    mut query: Query<(Entity, &mut StructureState, &Transform)>,
+    mut query: Query<(Entity, &mut NodeState, &Transform)>,
     build_entity: Option<Res<BuildEntity>>,
     game_cursor: Option<Res<GameCursor>>,
     map_state: Res<MapState>,
@@ -356,7 +359,7 @@ fn update(
                 };
 
                 if !build_entity.as_ref().is_some_and(|b| b.0 == entity)
-                    && !map_state.node(x, y, MapLayer::Main)
+                    && !map_state.is_node(x, y, MapLayer::Main)
                     && !matches!(state.action, ActionState::Destruct(_))
                 {
                     state.action = ActionState::Destruct(time.elapsed_secs());

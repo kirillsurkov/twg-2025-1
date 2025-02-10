@@ -13,10 +13,7 @@ impl Plugin for PrimaryBlockPlugin {
 }
 
 #[derive(Component)]
-pub struct PrimaryBlock {
-    pub x: i32,
-    pub y: i32,
-}
+pub struct PrimaryBlock;
 
 #[derive(Component, Reflect)]
 enum LoadingState {
@@ -30,7 +27,6 @@ fn init_primary_block(
     primary_blocks: Query<(Entity, &PrimaryBlock, Option<&LoadingState>)>,
     children: Query<&Children>,
     gltf_materials: Query<&GltfMaterialName>,
-    mut room_locations: ResMut<MapState>,
 ) {
     for (entity, primary_block, state) in primary_blocks.iter() {
         match state {
@@ -40,13 +36,7 @@ fn init_primary_block(
                     .insert(SceneRoot(
                         asset_server.load(GltfAssetLabel::Scene(0).from_asset("room.glb")),
                     ))
-                    .insert(Transform::from_xyz(
-                        primary_block.x as f32 * 2.01,
-                        primary_block.y as f32 * 2.01,
-                        0.0,
-                    ))
                     .insert(LoadingState::Materials);
-                room_locations.add_primary_block(primary_block.x, primary_block.y);
             }
             Some(LoadingState::Materials) => {
                 for child in children.iter_descendants(entity) {

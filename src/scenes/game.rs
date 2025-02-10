@@ -1,16 +1,16 @@
 use bevy::prelude::*;
 use build_material::BuildMaterialPlugin;
-use builder::{ActionState, BuilderPlugin, Enabled, HighlightState, StructureState};
+use builder::{ActionState, BuilderPlugin, Enabled, HighlightState, NodeState};
 use camera::GameCameraPlugin;
 use cargo::CargoPlugin;
 use crusher::CrusherPlugin;
 use enrichment::EnrichmentPlugin;
 use furnace::FurnacePlugin;
-use game_cursor::{GameCursorActive, GameCursorPlugin};
+use game_cursor::{GameCursor, GameCursorActive, GameCursorPlugin};
 use generator::GeneratorPlugin;
 use hook::{Hook, HookPlugin};
 use light_consts::lux::CLEAR_SUNRISE;
-use map_state::{MapStatePlugin, Structure};
+use map_state::{MapLayer, MapNode, MapState, MapStatePlugin};
 use player::{PlayerPlugin, PlayerState};
 use primary_block::{PrimaryBlock, PrimaryBlockPlugin};
 use rock::RockPlugin;
@@ -20,7 +20,7 @@ use ui::{
     container::GameUiContainer,
     container_item::GameUiContainerItem,
     header::GameUiHeader,
-    palette::{COLOR_CONTAINER, COLOR_HEADER, COLOR_TEXT},
+    palette::{COLOR_CONTAINER, COLOR_HEADER, COLOR_HIGHLIGHT_DARK, COLOR_TEXT},
     power_bar::GameUiPowerBar,
     GameUiPlugin,
 };
@@ -81,6 +81,7 @@ struct GameEntities {
     tooltip_title: Entity,
     tooltip_cost: Entity,
     tooltip_desc: Entity,
+    info_thumbnail: Entity,
 }
 
 #[derive(Resource, Default)]
@@ -91,7 +92,36 @@ struct TooltipState {
     desc: String,
 }
 
-fn setup(mut commands: Commands, root_entity: Res<AppSceneRoot>) {
+fn item_spawner(node: MapNode) -> impl Fn(&mut ChildBuilder) {
+    move |parent| {
+        parent
+            .spawn(
+                GameUiContainerItem::new(node.name())
+                    .button()
+                    .image(node.thumbnail()),
+            )
+            .observe({
+                let node = node.clone();
+                move |_: Trigger<Clicked>, mut next_state: ResMut<NextState<PlayerState>>| {
+                    next_state.set(PlayerState::Construct(node.clone()));
+                }
+            })
+            .observe({
+                let node = node.clone();
+                move |_: Trigger<Hovered>, mut tooltip: ResMut<TooltipState>| {
+                    tooltip.visible = true;
+                    tooltip.title = node.name().to_string();
+                    tooltip.cost = "???".to_string();
+                    tooltip.desc = node.desc().to_string();
+                }
+            })
+            .observe(|_: Trigger<Dehovered>, mut tooltip: ResMut<TooltipState>| {
+                tooltip.visible = false;
+            });
+    }
+}
+
+fn setup(mut commands: Commands, mut map_state: ResMut<MapState>, root_entity: Res<AppSceneRoot>) {
     let directional_light = |x, y| {
         (
             DirectionalLight {
@@ -109,13 +139,14 @@ fn setup(mut commands: Commands, root_entity: Res<AppSceneRoot>) {
         root.spawn(directional_light(-1.0, 1.0));
         root.spawn(directional_light(-1.0, -1.0));
         root.spawn((
-            PrimaryBlock { x: 0, y: 0 },
-            StructureState {
+            PrimaryBlock,
+            NodeState {
                 action: ActionState::Idle,
                 highlight: HighlightState::None,
             },
         ))
         .with_child((Hook(false), Enabled));
+        map_state.add_primary_block(0, 0);
     });
 
     // commands.spawn((
@@ -133,25 +164,7 @@ fn setup(mut commands: Commands, root_entity: Res<AppSceneRoot>) {
     let mut tooltip_desc = Entity::PLACEHOLDER;
     let mut game_field = Entity::PLACEHOLDER;
     let mut power_bar = Entity::PLACEHOLDER;
-
-    let construct_onclick = |structure: Structure| {
-        move |_: Trigger<Clicked>, mut next_state: ResMut<NextState<PlayerState>>| {
-            next_state.set(PlayerState::Construct(structure.clone()));
-        }
-    };
-
-    let show_onhover = |title: &'static str, cost: &'static str, desc: &'static str| {
-        |_: Trigger<Hovered>, mut tooltip: ResMut<TooltipState>| {
-            tooltip.visible = true;
-            tooltip.title = title.to_string();
-            tooltip.cost = cost.to_string();
-            tooltip.desc = desc.to_string();
-        }
-    };
-
-    let hide_ondehover = |_: Trigger<Dehovered>, mut tooltip: ResMut<TooltipState>| {
-        tooltip.visible = false;
-    };
+    let mut info_thumbnail = Entity::PLACEHOLDER;
 
     let mut spawn_tooltip = |parent: &mut ChildBuilder| {
         tooltip = parent
@@ -165,6 +178,8 @@ fn setup(mut commands: Commands, root_entity: Res<AppSceneRoot>) {
                     ..Default::default()
                 },
                 BoxShadow::default(),
+                BorderRadius::all(Val::Px(5.0)),
+                Outline::new(Val::Px(3.0), Val::ZERO, COLOR_HIGHLIGHT_DARK),
                 BackgroundColor(COLOR_CONTAINER),
                 ZIndex(i32::MAX),
             ))
@@ -264,15 +279,25 @@ fn setup(mut commands: Commands, root_entity: Res<AppSceneRoot>) {
                     })
                     .insert(Button)
                     .id();
-                parent.spawn((
-                    Node {
-                        width: Val::Percent(100.0),
-                        height: Val::Px(270.0),
-                        flex_shrink: 0.0,
-                        ..Default::default()
-                    },
-                    BackgroundColor(COLOR_CONTAINER),
-                ));
+                parent
+                    .spawn((
+                        Node {
+                            width: Val::Percent(100.0),
+                            height: Val::Px(270.0),
+                            flex_shrink: 0.0,
+                            ..Default::default()
+                        },
+                        BackgroundColor(COLOR_CONTAINER),
+                    ))
+                    .with_children(|parent| {
+                        info_thumbnail = parent
+                            .spawn(Node {
+                                width: Val::Px(250.0),
+                                height: Val::Px(250.0),
+                                ..Default::default()
+                            })
+                            .id();
+                    });
             });
     };
 
@@ -297,83 +322,13 @@ fn setup(mut commands: Commands, root_entity: Res<AppSceneRoot>) {
                 parent.spawn(GameUiHeader::new("Build"));
                 parent
                     .spawn(GameUiContainer)
-                    .with_children(|parent| {
-                        parent
-                            .spawn(GameUiContainerItem::new("Room").button().image("room.png"))
-                            .observe(construct_onclick(Structure::EmptyRoom))
-                            .observe(show_onhover("Room", "???", "Useful for building a base"))
-                            .observe(hide_ondehover);
-                    })
-                    .with_children(|parent| {
-                        parent
-                            .spawn(
-                                GameUiContainerItem::new("Furnace")
-                                    .button()
-                                    .image("furnace.png"),
-                            )
-                            .observe(construct_onclick(Structure::Furnace))
-                            .observe(show_onhover("Furnace", "???", "Melts ores and ice"))
-                            .observe(hide_ondehover);
-                    })
-                    .with_children(|parent| {
-                        parent
-                            .spawn(
-                                GameUiContainerItem::new("Cargo")
-                                    .button()
-                                    .image("cargo.png"),
-                            )
-                            .observe(construct_onclick(Structure::Cargo))
-                            .observe(show_onhover(
-                                "Cargo",
-                                "???",
-                                "Extends your storing capabilities!",
-                            ))
-                            .observe(hide_ondehover);
-                    })
-                    .with_children(|parent| {
-                        parent
-                            .spawn(
-                                GameUiContainerItem::new("Crusher")
-                                    .button()
-                                    .image("crusher.png"),
-                            )
-                            .observe(construct_onclick(Structure::Crusher))
-                            .observe(show_onhover(
-                                "Crusher",
-                                "???",
-                                "Crushes stones into the silicon dust",
-                            ))
-                            .observe(hide_ondehover);
-                    })
-                    .with_children(|parent| {
-                        parent
-                            .spawn(
-                                GameUiContainerItem::new("Generator")
-                                    .button()
-                                    .image("generator.png"),
-                            )
-                            .observe(construct_onclick(Structure::Generator))
-                            .observe(show_onhover("Generator", "???", "Generates power"))
-                            .observe(hide_ondehover);
-                    })
-                    .with_children(|parent| {
-                        parent
-                            .spawn(GameUiContainerItem::new("Hook").button().image("hook.png"))
-                            .observe(construct_onclick(Structure::Hook))
-                            .observe(show_onhover("Hook", "???", "Automatic hook"))
-                            .observe(hide_ondehover);
-                    })
-                    .with_children(|parent| {
-                        parent
-                            .spawn(
-                                GameUiContainerItem::new("Enrichment station")
-                                    .button()
-                                    .image("enrichment.png"),
-                            )
-                            .observe(construct_onclick(Structure::Enrichment))
-                            .observe(show_onhover("Enrichment station", "???", "Makes batteries"))
-                            .observe(hide_ondehover);
-                    });
+                    .with_children(item_spawner(MapNode::EmptyRoom))
+                    .with_children(item_spawner(MapNode::Furnace))
+                    .with_children(item_spawner(MapNode::Cargo))
+                    .with_children(item_spawner(MapNode::Crusher))
+                    .with_children(item_spawner(MapNode::Generator))
+                    .with_children(item_spawner(MapNode::Hook))
+                    .with_children(item_spawner(MapNode::Enrichment));
             });
     };
 
@@ -391,6 +346,7 @@ fn setup(mut commands: Commands, root_entity: Res<AppSceneRoot>) {
         tooltip_title,
         tooltip_cost,
         tooltip_desc,
+        info_thumbnail,
     });
 }
 
@@ -405,6 +361,10 @@ fn update(
     mut visibilities: Query<&mut Visibility>,
     window: Query<&Window>,
     tooltip_state: Res<TooltipState>,
+    map_state: Res<MapState>,
+    player_state: Res<State<PlayerState>>,
+    game_cursor: Option<Res<GameCursor>>,
+    assets: Res<AssetServer>,
 ) {
     if let Ok(mut power_bar) = power_bars.get_mut(state.power_bar) {
         power_bar.power = (power_bar.power + time.delta_secs()).fract();
@@ -445,6 +405,18 @@ fn update(
     }
     if let Ok(mut text) = texts.get_mut(state.tooltip_desc) {
         text.0 = tooltip_state.desc.clone();
+    }
+
+    if let Some(mut thumbnail) = commands.get_entity(state.info_thumbnail) {
+        if let Some((x, y)) = match (game_cursor.as_ref(), player_state.get()) {
+            (_, PlayerState::Interact(ix, iy)) => Some((*ix, *iy)),
+            (Some(game_cursor), PlayerState::Idle) => Some((game_cursor.x, game_cursor.y)),
+            _ => None,
+        } {
+            if let Some(node) = map_state.node(x, y, MapLayer::Main) {
+                thumbnail.insert(ImageNode::new(assets.load(node.thumbnail())));
+            }
+        }
     }
 }
 
