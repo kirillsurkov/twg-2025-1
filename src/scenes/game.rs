@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use build_material::BuildMaterialPlugin;
-use builder::{BuilderPlugin, Enabled};
+use builder::{ActionState, BuilderPlugin, Enabled, HighlightState, StructureState};
 use camera::GameCameraPlugin;
 use cargo::CargoPlugin;
 use crusher::CrusherPlugin;
@@ -108,8 +108,14 @@ fn setup(mut commands: Commands, root_entity: Res<AppSceneRoot>) {
         root.spawn(directional_light(1.0, -1.0));
         root.spawn(directional_light(-1.0, 1.0));
         root.spawn(directional_light(-1.0, -1.0));
-        root.spawn(PrimaryBlock { x: 0, y: 0 })
-            .with_child((Hook(false), Enabled));
+        root.spawn((
+            PrimaryBlock { x: 0, y: 0 },
+            StructureState {
+                action: ActionState::Idle,
+                highlight: HighlightState::None,
+            },
+        ))
+        .with_child((Hook(false), Enabled));
     });
 
     // commands.spawn((

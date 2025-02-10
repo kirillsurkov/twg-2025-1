@@ -119,6 +119,12 @@ impl MapState {
             })
     }
 
+    pub fn node(&self, x: i32, y: i32, layer: MapLayer) -> bool {
+        self.map_by_layer
+            .get(&layer)
+            .is_some_and(|m| m.contains_key(&IVec2::new(x, y)))
+    }
+
     pub fn get_bounds(&self) -> (IVec2, IVec2) {
         (self.bounds_min, self.bounds_max)
     }

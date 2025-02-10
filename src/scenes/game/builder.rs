@@ -323,6 +323,7 @@ fn update(
     build_entity: Option<Res<BuildEntity>>,
     game_cursor: Option<Res<GameCursor>>,
     map_state: Res<MapState>,
+    player_state: Res<State<PlayerState>>,
     time: Res<Time>,
 ) {
     let elapsed = time.elapsed_secs();
@@ -348,13 +349,14 @@ fn update(
                 let Vec2 { x, y } = transform.translation.xy();
                 let IVec2 { x, y } = GameCursor::world_to_game(x, y, CursorLayer::Room);
 
-                let is_selected = match game_cursor.as_ref() {
-                    Some(game_cursor) => x == game_cursor.x && y == game_cursor.y,
+                let is_selected = match (game_cursor.as_ref(), player_state.get()) {
+                    (_, PlayerState::Interact(ix, iy)) => x == *ix && y == *iy,
+                    (Some(game_cursor), _) => x == game_cursor.x && y == game_cursor.y,
                     _ => false,
                 };
 
                 if !build_entity.as_ref().is_some_and(|b| b.0 == entity)
-                    && !map_state.room(x, y, MapLayer::Main)
+                    && !map_state.node(x, y, MapLayer::Main)
                     && !matches!(state.action, ActionState::Destruct(_))
                 {
                     state.action = ActionState::Destruct(time.elapsed_secs());

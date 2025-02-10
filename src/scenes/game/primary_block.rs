@@ -2,7 +2,7 @@ use bevy::{gltf::GltfMaterialName, prelude::*};
 
 use crate::scenes::AppState;
 
-use super::{map_state::MapState, room::RoomFloorMaterial};
+use super::{builder::Ready, map_state::MapState, room::RoomFloorMaterial};
 
 pub struct PrimaryBlockPlugin;
 
@@ -64,6 +64,7 @@ fn init_primary_block(
                             ));
                         commands
                             .entity(entity)
+                            .insert(Ready)
                             .insert(LoadingState::Done)
                             .insert(Visibility::Inherited);
                     }

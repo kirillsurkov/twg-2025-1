@@ -11,8 +11,8 @@ use crate::{
 
 use super::{
     builder::{Enabled, Ready},
-    game_cursor::{update_cursor, CursorLayer, GameCursor},
-    player::{PlayerInteractEntity, PlayerState},
+    game_cursor::{CursorLayer, GameCursor},
+    player::PlayerState,
     rock::{Rock, RockState},
 };
 
@@ -22,20 +22,8 @@ impl Plugin for HookPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            (
-                init,
-                update,
-                (
-                    user_interact.run_if(
-                        in_state(PlayerState::Interact)
-                            .and(resource_exists::<PlayerInteractEntity>),
-                    ),
-                    set_state.run_if(in_state(PlayerState::Idle)),
-                )
-                    .chain()
-                    .run_if(resource_exists::<GameCursor>)
-                    .after(update_cursor),
-            )
+            (init, update, user_interact)
+                .chain()
                 .run_if(in_state(AppState::Game)),
         );
     }
@@ -119,86 +107,57 @@ fn init(
     }
 }
 
-fn set_state(
+fn user_interact(
     mut commands: Commands,
-    mut next_player_state: ResMut<NextState<PlayerState>>,
+    player_state: Res<State<PlayerState>>,
     game_cursor: Option<Res<GameCursor>>,
-    hooks: Query<(Entity, &LoadingState, &GlobalTransform), (With<Hook>, With<Enabled>)>,
+    mut hooks: Query<
+        (Entity, &LoadingState, &mut HookState, &GlobalTransform),
+        (With<Hook>, With<Enabled>),
+    >,
 ) {
-    // WTF
     let Some(game_cursor) = game_cursor else {
         return;
     };
 
-    for (entity, loading_state, transform) in hooks.iter() {
+    let PlayerState::Interact(px, py) = *player_state.get() else {
+        return;
+    };
+
+    for (entity, loading_state, mut hook_state, transform) in hooks.iter_mut() {
         match loading_state {
             LoadingState::Done { .. } => {}
         }
 
-        let pos = GameCursor::world_to_game(
+        let IVec2 { x, y } = GameCursor::world_to_game(
             transform.translation().x,
             transform.translation().y,
             CursorLayer::Room,
         );
-        let is_selected = game_cursor.x == pos.x && game_cursor.y == pos.y;
 
-        let mut entity = commands.entity(entity);
-        entity.remove::<MaterialModifier<StandardMaterial>>();
+        if x != px || y != py {
+            continue;
+        }
 
-        if is_selected {
-            entity.insert(MaterialModifier::new(move |mut mat: StandardMaterial| {
-                mat.base_color = mat.base_color.lighter(0.05);
+        commands
+            .entity(entity)
+            .remove::<MaterialModifier<StandardMaterial>>()
+            .insert(MaterialModifier::new(|mut mat: StandardMaterial| {
+                mat.base_color = mat.base_color.lighter(0.1);
                 mat
             }));
+
+        match *hook_state {
+            HookState::Idle if game_cursor.just_pressed => {
+                let cursor_pos = Vec2::new(game_cursor.fx, game_cursor.fy);
+                let hook_pos = transform.translation().xy();
+                let Ok(dir) = Dir2::new(cursor_pos - hook_pos) else {
+                    return;
+                };
+                *hook_state = HookState::Flying { dir, length: 0.0 };
+            }
+            _ => {}
         }
-
-        let entity = entity.id();
-
-        if is_selected && game_cursor.just_pressed {
-            next_player_state.set(PlayerState::Interact);
-            commands.insert_resource(PlayerInteractEntity(entity));
-        }
-    }
-}
-
-fn user_interact(
-    mut commands: Commands,
-    game_cursor: Option<Res<GameCursor>>,
-    interact: Res<PlayerInteractEntity>,
-    mut hooks: Query<
-        (&LoadingState, &mut HookState, &GlobalTransform),
-        (With<Hook>, With<Enabled>),
-    >,
-) {
-    // WTF
-    let Some(game_cursor) = game_cursor else {
-        return;
-    };
-
-    let (loading_state, mut hook_state, transform) = hooks.get_mut(interact.0).unwrap();
-
-    match loading_state {
-        LoadingState::Done { .. } => {}
-    }
-
-    commands
-        .entity(interact.0)
-        .remove::<MaterialModifier<StandardMaterial>>()
-        .insert(MaterialModifier::new(|mut mat: StandardMaterial| {
-            mat.base_color = mat.base_color.lighter(0.1);
-            mat
-        }));
-
-    match *hook_state {
-        HookState::Idle if game_cursor.just_pressed => {
-            let cursor_pos = Vec2::new(game_cursor.fx, game_cursor.fy);
-            let hook_pos = transform.translation().xy();
-            let Ok(dir) = Dir2::new(cursor_pos - hook_pos) else {
-                return;
-            };
-            *hook_state = HookState::Flying { dir, length: 0.0 };
-        }
-        _ => {}
     }
 }
 

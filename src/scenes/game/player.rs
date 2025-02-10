@@ -2,13 +2,16 @@ use bevy::{dev_tools::fps_overlay::FpsOverlayConfig, prelude::*};
 
 use crate::scenes::AppState;
 
-use super::map_state::Structure;
+use super::{
+    game_cursor::GameCursor,
+    map_state::{MapLayer, MapState, Structure},
+};
 
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, listen_inputs.run_if(in_state(AppState::Game)))
+        app.add_systems(PreUpdate, listen_inputs.run_if(in_state(AppState::Game)))
             .insert_state(PlayerState::Idle);
     }
 }
@@ -18,11 +21,8 @@ pub enum PlayerState {
     Idle,
     Construct(Structure),
     Destruct,
-    Interact,
+    Interact(i32, i32),
 }
-
-#[derive(Resource)]
-pub struct PlayerInteractEntity(pub Entity);
 
 fn listen_inputs(
     mut commands: Commands,
@@ -31,6 +31,8 @@ fn listen_inputs(
     keyboard: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
     fps_overlay_config: Res<FpsOverlayConfig>,
+    game_cursor: Option<Res<GameCursor>>,
+    map_state: Res<MapState>,
 ) {
     if keyboard.just_pressed(KeyCode::Escape) || mouse.just_pressed(MouseButton::Right) {
         match state.get() {
@@ -51,5 +53,13 @@ fn listen_inputs(
             enabled: !fps_overlay_config.enabled,
             ..Default::default()
         });
+    }
+
+    if let Some(game_cursor) = game_cursor {
+        if *state.get() == PlayerState::Idle && game_cursor.just_pressed {
+            if map_state.node(game_cursor.x, game_cursor.y, MapLayer::Main) {
+                next_state.set(PlayerState::Interact(game_cursor.x, game_cursor.y));
+            }
+        }
     }
 }
