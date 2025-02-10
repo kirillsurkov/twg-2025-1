@@ -33,11 +33,20 @@ impl Plugin for RockPlugin {
     }
 }
 
+enum RockKind {
+    Silicon,
+    Copper,
+    Uranium,
+    Water,
+    Aurelium,
+}
+
 #[derive(Component)]
 pub struct Rock {
     pub movement_speed: Vec2,
     rotation_speed: f32,
     rotation_axis: Dir3,
+    kind: RockKind,
 }
 
 #[derive(Component, PartialEq)]
@@ -182,7 +191,7 @@ fn update_pos(
                     transform.translation.y,
                     CursorLayer::Room,
                 );
-                map_state.remove(x, y, MapLayer::Main);
+                map_state.remove_room(x, y, MapLayer::Main);
                 commands.entity(entity).try_despawn_recursive();
             }
         }
@@ -247,6 +256,7 @@ fn rock_spawner(
             movement_speed: flight_dir.normalize() * rng.random_range(1.0..3.0),
             rotation_speed: rng.random_range(-1.0..1.0),
             rotation_axis: Transform::from_rotation(Quat::random()).forward(),
+            kind: RockKind::Copper,
         },
         Transform::from_xyz(spawn_point.x, spawn_point.y, 2.0)
             .looking_to(flight_dir.extend(0.0), Vec3::Z)
