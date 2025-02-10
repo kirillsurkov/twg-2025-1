@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use build_material::BuildMaterialPlugin;
 use builder::{BuilderPlugin, Enabled};
 use camera::GameCameraPlugin;
+use cargo::CargoPlugin;
 use crusher::CrusherPlugin;
 use furnace::FurnacePlugin;
 use game_cursor::{GameCursorActive, GameCursorPlugin};
@@ -30,6 +31,7 @@ use super::{AppSceneRoot, AppState};
 mod build_material;
 mod builder;
 mod camera;
+mod cargo;
 mod crusher;
 mod furnace;
 mod game_cursor;
@@ -55,6 +57,7 @@ impl Plugin for GamePlugin {
             .add_plugins(BuilderPlugin)
             .add_plugins(PrimaryBlockPlugin)
             .add_plugins(RoomPlugin)
+            .add_plugins(CargoPlugin)
             .add_plugins(FurnacePlugin)
             .add_plugins(GeneratorPlugin)
             .add_plugins(CrusherPlugin)
@@ -230,8 +233,8 @@ fn setup(mut commands: Commands, root_entity: Res<AppSceneRoot>) {
                 .with_children(|parent| {
                     parent
                         .spawn(GameUiContainerItem::new("Cargo").button())
-                        .observe(|_: Trigger<Clicked>| {
-                            println!("Cargo clicked");
+                        .observe(|_: Trigger<Clicked>, mut next_state: ResMut<NextState<PlayerState>>| {
+                            next_state.set(PlayerState::Construct(Structure::Cargo));
                         });
                 })
                 .with_children(|parent| {

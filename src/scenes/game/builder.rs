@@ -9,6 +9,7 @@ use crate::{
 
 use super::{
     build_material::{BuildMaterial, BuildMaterialSettings, ExtendedBuildMaterial},
+    cargo::Cargo,
     crusher::Crusher,
     furnace::Furnace,
     game_cursor::{CursorLayer, GameCursor},
@@ -108,6 +109,7 @@ fn construct(
             Structure::Furnace => commands.spawn(Furnace),
             Structure::Generator => commands.spawn(Generator),
             Structure::Crusher => commands.spawn(Crusher),
+            Structure::Cargo => commands.spawn(Cargo),
             Structure::Hook => commands.spawn(Hook(true)),
         }
         .insert(StructureState {

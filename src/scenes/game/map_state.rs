@@ -22,6 +22,7 @@ pub enum Structure {
     Furnace,
     Generator,
     Crusher,
+    Cargo,
     Hook,
 }
 
