@@ -1,12 +1,6 @@
-use std::f32::consts::{FRAC_PI_4, SQRT_2};
+use bevy::prelude::*;
 
-use bevy::{
-    animation::{animated_field, AnimationTargetId},
-    color::palettes::css::{BLUE, RED, WHITE},
-    prelude::*,
-};
-
-use super::clicked_event::Clicked;
+use super::mouse_event::Clicked;
 
 pub struct GameButtonPlugin;
 

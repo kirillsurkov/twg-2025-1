@@ -5,7 +5,7 @@ use bevy::{
 
 use crate::components::{
     background::{BackgroundPluginSettings, RenderBackground},
-    clicked_event::Clicked,
+    mouse_event::Clicked,
     game_button::GameButton,
 };
 

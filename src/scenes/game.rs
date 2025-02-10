@@ -25,7 +25,7 @@ use ui::{
     GameUiPlugin,
 };
 
-use crate::components::clicked_event::{Clicked, Dehovered, Hovered};
+use crate::components::mouse_event::{Clicked, Dehovered, Hovered};
 
 use super::{AppSceneRoot, AppState};
 

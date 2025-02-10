@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use crate::{
-    components::clicked_event::{Clicked, Dehovered, Hovered},
+    components::mouse_event::{Clicked, Dehovered, Hovered},
     scenes::AppState,
 };
 
