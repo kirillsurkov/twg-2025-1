@@ -217,7 +217,7 @@ fn setup(mut commands: Commands, root_entity: Res<AppSceneRoot>) {
                 .spawn(GameUiContainer)
                 .with_children(|parent| {
                     parent
-                        .spawn(GameUiContainerItem::new("Room").button())
+                        .spawn(GameUiContainerItem::new("Room").button().image("room.png"))
                         .observe(
                         |_: Trigger<Clicked>, mut next_state: ResMut<NextState<PlayerState>>| {
                             next_state.set(PlayerState::Construct(Structure::EmptyRoom));
@@ -226,7 +226,7 @@ fn setup(mut commands: Commands, root_entity: Res<AppSceneRoot>) {
                 })
                 .with_children(|parent| {
                     parent
-                        .spawn(GameUiContainerItem::new("Furnace").button())
+                        .spawn(GameUiContainerItem::new("Furnace").button().image("furnace.png"))
                         .observe(
                         |_: Trigger<Clicked>, mut next_state: ResMut<NextState<PlayerState>>| {
                             next_state.set(PlayerState::Construct(Structure::Furnace));
@@ -235,28 +235,28 @@ fn setup(mut commands: Commands, root_entity: Res<AppSceneRoot>) {
                 })
                 .with_children(|parent| {
                     parent
-                        .spawn(GameUiContainerItem::new("Cargo").button())
+                        .spawn(GameUiContainerItem::new("Cargo").button().image("cargo.png"))
                         .observe(|_: Trigger<Clicked>, mut next_state: ResMut<NextState<PlayerState>>| {
                             next_state.set(PlayerState::Construct(Structure::Cargo));
                         });
                 })
                 .with_children(|parent| {
                     parent
-                        .spawn(GameUiContainerItem::new("Crusher").button())
+                        .spawn(GameUiContainerItem::new("Crusher").button().image("crusher.png"))
                         .observe(|_: Trigger<Clicked>, mut next_state: ResMut<NextState<PlayerState>>| {
                             next_state.set(PlayerState::Construct(Structure::Crusher));
                         });
                 })
                 .with_children(|parent| {
                     parent
-                        .spawn(GameUiContainerItem::new("Generator").button())
+                        .spawn(GameUiContainerItem::new("Generator").button().image("generator.png"))
                         .observe(|_: Trigger<Clicked>, mut next_state: ResMut<NextState<PlayerState>>| {
                             next_state.set(PlayerState::Construct(Structure::Generator));
                         });
                 })
                 .with_children(|parent| {
                     parent
-                        .spawn(GameUiContainerItem::new("Hook").button())
+                        .spawn(GameUiContainerItem::new("Hook").button().image("hook.png"))
                         .observe(
                         |_: Trigger<Clicked>, mut next_state: ResMut<NextState<PlayerState>>| {
                             next_state.set(PlayerState::Construct(Structure::Hook));
@@ -264,7 +264,7 @@ fn setup(mut commands: Commands, root_entity: Res<AppSceneRoot>) {
                     );
                 }).with_children(|parent| {
                     parent
-                        .spawn(GameUiContainerItem::new("Enrichment station").button())
+                        .spawn(GameUiContainerItem::new("Enrichment station").button().image("enrichment.png"))
                         .observe(|_: Trigger<Clicked>, mut next_state: ResMut<NextState<PlayerState>>| {
                             next_state.set(PlayerState::Construct(Structure::Enrichment));
                         });

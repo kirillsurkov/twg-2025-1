@@ -20,6 +20,7 @@ pub struct GameUiContainerItem {
     title: String,
     is_button: bool,
     child_spawners: Vec<Box<dyn FnOnce(&mut ChildBuilder) + Send + Sync>>,
+    image: Option<String>,
 }
 
 impl GameUiContainerItem {
@@ -28,6 +29,7 @@ impl GameUiContainerItem {
             title: title.to_string(),
             is_button: false,
             child_spawners: vec![],
+            image: None,
         }
     }
 
@@ -43,6 +45,11 @@ impl GameUiContainerItem {
             }));
         self
     }
+
+    pub fn image(mut self, image: &str) -> Self {
+        self.image = Some(image.to_string());
+        self
+    }
 }
 
 #[derive(Component)]
@@ -53,6 +60,7 @@ enum State {
 fn init(
     mut commands: Commands,
     mut containers: Query<(Entity, &mut GameUiContainerItem, Option<&State>)>,
+    server: Res<AssetServer>,
 ) {
     for (entity, mut item, state) in containers.iter_mut() {
         match state {
@@ -70,7 +78,7 @@ fn init(
                     entity.insert(Button);
                 }
                 entity.with_children(|parent| {
-                    parent.spawn((
+                    let mut preview = parent.spawn((
                         Node {
                             width: Val::Px(80.0),
                             height: Val::Px(80.0),
@@ -79,6 +87,9 @@ fn init(
                         },
                         BackgroundColor(Color::BLACK),
                     ));
+                    if let Some(image) = item.image.as_ref() {
+                        preview.insert(ImageNode::new(server.load::<Image>(image)));
+                    }
                     parent
                         .spawn(Node {
                             width: Val::Percent(100.0),
