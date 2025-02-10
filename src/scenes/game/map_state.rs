@@ -1,7 +1,10 @@
+use std::collections::BTreeMap;
+
 use bevy::{
     prelude::*,
     utils::{HashMap, HashSet},
 };
+use strum_macros::EnumIter;
 
 use crate::scenes::AppState;
 
@@ -11,7 +14,7 @@ impl Plugin for MapStatePlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(MapState::default()).add_systems(
             PreUpdate,
-            check_connectivity.run_if(in_state(AppState::Game)),
+            (tick, check_connectivity).run_if(in_state(AppState::Game)),
         );
     }
 }
@@ -26,6 +29,37 @@ pub enum MapNode {
     Cargo,
     Hook,
     Enrichment,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIter)]
+pub enum Cargo {
+    Stone,
+    Silicon,
+    Ice,
+    Copper,
+    Uranium,
+    Aurelium,
+    Water,
+    CopperPlates,
+    UraniumRods,
+    Batteries,
+}
+
+impl Cargo {
+    pub fn name(&self) -> &str {
+        match self {
+            Cargo::Stone => "Stone",
+            Cargo::Silicon => "Silicon",
+            Cargo::Ice => "Ice",
+            Cargo::Copper => "Copper",
+            Cargo::Uranium => "Uranium",
+            Cargo::Aurelium => "Aurelium",
+            Cargo::Water => "Water",
+            Cargo::CopperPlates => "Copper plates",
+            Cargo::UraniumRods => "Uranium rods",
+            Cargo::Batteries => "Batteries",
+        }
+    }
 }
 
 impl MapNode {
@@ -55,6 +89,21 @@ impl MapNode {
         }
     }
 
+    pub fn recipe(&self) -> BTreeMap<Cargo, u32> {
+        match self {
+            MapNode::PrimaryBlock => vec![],
+            MapNode::EmptyRoom => vec![(Cargo::Silicon, 10)],
+            MapNode::Furnace => vec![(Cargo::Silicon, 10), (Cargo::Uranium, 1)],
+            MapNode::Generator => vec![(Cargo::Silicon, 10), (Cargo::UraniumRods, 5)],
+            MapNode::Crusher => vec![(Cargo::Silicon, 30), (Cargo::CopperPlates, 20)],
+            MapNode::Cargo => vec![(Cargo::CopperPlates, 20)],
+            MapNode::Hook => vec![(Cargo::Silicon, 50)],
+            MapNode::Enrichment => vec![(Cargo::Silicon, 100), (Cargo::UraniumRods, 30)],
+        }
+        .into_iter()
+        .collect()
+    }
+
     pub fn desc(&self) -> &str {
         match self {
             MapNode::PrimaryBlock => "Your rescue capsule",
@@ -80,6 +129,9 @@ pub struct MapState {
     map_by_layer: HashMap<MapLayer, HashMap<IVec2, MapNode>>,
     bounds_min: IVec2,
     bounds_max: IVec2,
+    total_energy: f32,
+    cargo: HashMap<Cargo, f32>,
+    cargo_max: HashMap<Cargo, f32>,
 }
 
 impl MapState {
@@ -191,6 +243,70 @@ impl MapState {
             vec![]
         }
     }
+
+    pub fn cargo_count(&self, cargo: Cargo) -> (f32, f32) {
+        (
+            self.cargo.get(&cargo).cloned().unwrap_or_default(),
+            self.cargo_max.get(&cargo).cloned().unwrap_or_default(),
+        )
+    }
+}
+
+fn tick(mut map_state: ResMut<MapState>, time: Res<Time>) {
+    let Some(map) = map_state.map_by_layer.get(&MapLayer::Main).cloned() else {
+        return;
+    };
+
+    let mut total_energy = 0.0;
+    let mut cargo_max = HashMap::<Cargo, f32>::new();
+    for node in map.values() {
+        match node {
+            MapNode::PrimaryBlock => {
+                total_energy += 100.0;
+                *cargo_max.entry(Cargo::Silicon).or_default() += 10.0;
+                *cargo_max.entry(Cargo::Ice).or_default() += 10.0;
+                *cargo_max.entry(Cargo::Copper).or_default() += 10.0;
+                *cargo_max.entry(Cargo::Uranium).or_default() += 1.0;
+            }
+            MapNode::EmptyRoom => {
+                total_energy -= 5.0;
+            }
+            MapNode::Furnace => {
+                total_energy -= 20.0;
+            }
+            MapNode::Generator => {
+                total_energy += 100.0;
+            }
+            MapNode::Crusher => {
+                total_energy -= 10.0;
+            }
+            MapNode::Cargo => {
+                *cargo_max.entry(Cargo::Stone).or_default() += 10.0;
+                *cargo_max.entry(Cargo::Silicon).or_default() += 10.0;
+                *cargo_max.entry(Cargo::Ice).or_default() += 10.0;
+                *cargo_max.entry(Cargo::Copper).or_default() += 10.0;
+                *cargo_max.entry(Cargo::Uranium).or_default() += 10.0;
+                *cargo_max.entry(Cargo::Aurelium).or_default() += 1.0;
+                *cargo_max.entry(Cargo::Water).or_default() += 10.0;
+                *cargo_max.entry(Cargo::CopperPlates).or_default() += 10.0;
+                *cargo_max.entry(Cargo::UraniumRods).or_default() += 5.0;
+                *cargo_max.entry(Cargo::Batteries).or_default() += 1.0;
+            }
+            MapNode::Hook => {
+                total_energy -= 50.0;
+            }
+            MapNode::Enrichment => {
+                total_energy -= 200.0;
+            }
+        }
+    }
+
+    for (cargo, count) in &mut map_state.cargo {
+        *count = count.min(cargo_max.get(cargo).cloned().unwrap_or_default());
+    }
+
+    map_state.cargo_max = cargo_max;
+    map_state.total_energy = total_energy;
 }
 
 fn check_connectivity(mut map_state: ResMut<MapState>) {

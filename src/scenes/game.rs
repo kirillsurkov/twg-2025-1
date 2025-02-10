@@ -10,11 +10,12 @@ use game_cursor::{GameCursor, GameCursorActive, GameCursorPlugin};
 use generator::GeneratorPlugin;
 use hook::{Hook, HookPlugin};
 use light_consts::lux::CLEAR_SUNRISE;
-use map_state::{MapLayer, MapNode, MapState, MapStatePlugin};
+use map_state::{Cargo, MapLayer, MapNode, MapState, MapStatePlugin};
 use player::{PlayerPlugin, PlayerState};
 use primary_block::{PrimaryBlock, PrimaryBlockPlugin};
 use rock::RockPlugin;
 use room::RoomPlugin;
+use strum::IntoEnumIterator;
 use ui::{
     cargo_count::GameUiCargoCount,
     container::GameUiContainer,
@@ -82,6 +83,7 @@ struct GameEntities {
     tooltip_cost: Entity,
     tooltip_desc: Entity,
     info_thumbnail: Entity,
+    cargo_counts: Vec<(Cargo, Entity)>,
 }
 
 #[derive(Resource, Default)]
@@ -111,7 +113,12 @@ fn item_spawner(node: MapNode) -> impl Fn(&mut ChildBuilder) {
                 move |_: Trigger<Hovered>, mut tooltip: ResMut<TooltipState>| {
                     tooltip.visible = true;
                     tooltip.title = node.name().to_string();
-                    tooltip.cost = "???".to_string();
+                    tooltip.cost = node
+                        .recipe()
+                        .into_iter()
+                        .map(|(cargo, cnt)| format!("{}: {cnt}", cargo.name()))
+                        .collect::<Vec<_>>()
+                        .join("\n");
                     tooltip.desc = node.desc().to_string();
                 }
             })
@@ -165,6 +172,7 @@ fn setup(mut commands: Commands, mut map_state: ResMut<MapState>, root_entity: R
     let mut game_field = Entity::PLACEHOLDER;
     let mut power_bar = Entity::PLACEHOLDER;
     let mut info_thumbnail = Entity::PLACEHOLDER;
+    let mut cargo_counts = vec![];
 
     let mut spawn_tooltip = |parent: &mut ChildBuilder| {
         tooltip = parent
@@ -173,7 +181,7 @@ fn setup(mut commands: Commands, mut map_state: ResMut<MapState>, root_entity: R
                     position_type: PositionType::Absolute,
                     flex_direction: FlexDirection::Column,
                     row_gap: Val::Px(5.0),
-                    width: Val::Px(200.0),
+                    width: Val::Px(300.0),
                     padding: UiRect::all(Val::Px(10.0)),
                     ..Default::default()
                 },
@@ -221,27 +229,13 @@ fn setup(mut commands: Commands, mut map_state: ResMut<MapState>, root_entity: R
             },))
             .with_children(|parent| {
                 parent.spawn(GameUiHeader::new("Cargo"));
-                parent
-                    .spawn(GameUiContainer)
-                    .with_child(
-                        GameUiContainerItem::new("Silicon")
-                            .footer(GameUiCargoCount::new(9999, 99999)),
-                    )
-                    .with_child(
-                        GameUiContainerItem::new("Copper")
-                            .footer(GameUiCargoCount::new(9999, 99999)),
-                    )
-                    .with_child(
-                        GameUiContainerItem::new("Uranium")
-                            .footer(GameUiCargoCount::new(9999, 99999)),
-                    )
-                    .with_child(
-                        GameUiContainerItem::new("Ice").footer(GameUiCargoCount::new(9999, 99999)),
-                    )
-                    .with_child(
-                        GameUiContainerItem::new("Aurelium")
-                            .footer(GameUiCargoCount::new(9999, 99999)),
-                    );
+                parent.spawn(GameUiContainer).with_children(|parent| {
+                    for cargo in Cargo::iter() {
+                        let footer = parent.spawn(GameUiCargoCount::new(0, 0)).id();
+                        cargo_counts.push((cargo.clone(), footer));
+                        parent.spawn(GameUiContainerItem::new(cargo.name()).footer(footer));
+                    }
+                });
             });
     };
 
@@ -283,7 +277,6 @@ fn setup(mut commands: Commands, mut map_state: ResMut<MapState>, root_entity: R
                     .spawn((
                         Node {
                             width: Val::Percent(100.0),
-                            height: Val::Px(270.0),
                             flex_shrink: 0.0,
                             ..Default::default()
                         },
@@ -292,8 +285,8 @@ fn setup(mut commands: Commands, mut map_state: ResMut<MapState>, root_entity: R
                     .with_children(|parent| {
                         info_thumbnail = parent
                             .spawn(Node {
-                                width: Val::Px(250.0),
-                                height: Val::Px(250.0),
+                                width: Val::Px(100.0),
+                                height: Val::Px(100.0),
                                 ..Default::default()
                             })
                             .id();
@@ -347,6 +340,7 @@ fn setup(mut commands: Commands, mut map_state: ResMut<MapState>, root_entity: R
         tooltip_cost,
         tooltip_desc,
         info_thumbnail,
+        cargo_counts,
     });
 }
 
@@ -365,6 +359,7 @@ fn update(
     player_state: Res<State<PlayerState>>,
     game_cursor: Option<Res<GameCursor>>,
     assets: Res<AssetServer>,
+    mut cargo_counts: Query<&mut GameUiCargoCount>,
 ) {
     if let Ok(mut power_bar) = power_bars.get_mut(state.power_bar) {
         power_bar.power = (power_bar.power + time.delta_secs()).fract();
@@ -416,6 +411,14 @@ fn update(
             if let Some(node) = map_state.node(x, y, MapLayer::Main) {
                 thumbnail.insert(ImageNode::new(assets.load(node.thumbnail())));
             }
+        }
+    }
+
+    for (cargo, count) in &state.cargo_counts {
+        if let Ok(mut count) = cargo_counts.get_mut(*count) {
+            let (cur, max) = map_state.cargo_count(cargo.clone());
+            count.cur = cur as u32;
+            count.max = max as u32;
         }
     }
 }

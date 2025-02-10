@@ -22,7 +22,7 @@ impl Plugin for GameUiContainerItemPlugin {
 pub struct GameUiContainerItem {
     title: String,
     is_button: bool,
-    child_spawners: Vec<Box<dyn FnOnce(&mut ChildBuilder) + Send + Sync>>,
+    children: Vec<Entity>,
     image: Option<String>,
 }
 
@@ -31,7 +31,7 @@ impl GameUiContainerItem {
         Self {
             title: title.to_string(),
             is_button: false,
-            child_spawners: vec![],
+            children: vec![],
             image: None,
         }
     }
@@ -41,11 +41,8 @@ impl GameUiContainerItem {
         self
     }
 
-    pub fn footer(mut self, bundle: impl Bundle) -> Self {
-        self.child_spawners
-            .push(Box::new(move |builder: &mut ChildBuilder| {
-                builder.spawn(Node::default()).insert(bundle);
-            }));
+    pub fn footer(mut self, entity: Entity) -> Self {
+        self.children.push(entity);
         self
     }
 
@@ -80,38 +77,37 @@ fn init(
                 if item.is_button {
                     entity.insert(Button);
                 }
-                entity.with_children(|parent| {
-                    let mut preview = parent.spawn((
-                        Node {
-                            width: Val::Px(80.0),
-                            height: Val::Px(80.0),
-                            flex_shrink: 0.0,
-                            ..Default::default()
-                        },
-                        BackgroundColor(Color::BLACK),
-                    ));
-                    if let Some(image) = item.image.as_ref() {
-                        preview.insert(ImageNode::new(server.load::<Image>(image)));
-                    }
-                    parent
-                        .spawn(Node {
-                            width: Val::Percent(100.0),
-                            height: Val::Percent(100.0),
-                            align_items: AlignItems::Center,
-                            ..Default::default()
-                        })
-                        .with_child((
-                            Text(item.title.clone()),
-                            TextColor(COLOR_TEXT),
-                            TextFont {
-                                font_size: 32.0,
+                entity
+                    .with_children(|parent| {
+                        let mut preview = parent.spawn((
+                            Node {
+                                width: Val::Px(80.0),
+                                height: Val::Px(80.0),
+                                flex_shrink: 0.0,
                                 ..Default::default()
                             },
+                            BackgroundColor(Color::BLACK),
                         ));
-                    for spawner in item.child_spawners.drain(..) {
-                        spawner(parent);
-                    }
-                });
+                        if let Some(image) = item.image.as_ref() {
+                            preview.insert(ImageNode::new(server.load::<Image>(image)));
+                        }
+                        parent
+                            .spawn(Node {
+                                width: Val::Percent(100.0),
+                                height: Val::Percent(100.0),
+                                align_items: AlignItems::Center,
+                                ..Default::default()
+                            })
+                            .with_child((
+                                Text(item.title.clone()),
+                                TextColor(COLOR_TEXT),
+                                TextFont {
+                                    font_size: 24.0,
+                                    ..Default::default()
+                                },
+                            ));
+                    })
+                    .add_children(&item.children);
             }
             _ => {}
         }
