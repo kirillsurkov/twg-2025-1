@@ -2,6 +2,8 @@ use bevy::prelude::*;
 
 use crate::scenes::AppState;
 
+use super::GameState;
+
 pub struct GameCursorPlugin;
 
 impl Plugin for GameCursorPlugin {
@@ -10,6 +12,7 @@ impl Plugin for GameCursorPlugin {
             Update,
             update_cursor.run_if(
                 in_state(AppState::Game)
+                    .and(in_state(GameState::Idle))
                     .and(any_with_component::<Window>)
                     .and(any_with_component::<Camera>),
             ),

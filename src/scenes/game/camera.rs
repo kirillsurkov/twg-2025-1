@@ -11,6 +11,8 @@ use crate::{
     scenes::{AppSceneRoot, AppState},
 };
 
+use super::GameState;
+
 pub struct GameCameraPlugin(pub Vec3);
 
 impl Plugin for GameCameraPlugin {
@@ -18,7 +20,11 @@ impl Plugin for GameCameraPlugin {
         app.add_systems(OnEnter(AppState::Game), setup)
             .add_systems(
                 Update,
-                camera_control.run_if(in_state(AppState::Game).and(any_with_component::<Camera>)),
+                camera_control.run_if(
+                    in_state(AppState::Game)
+                        .and(in_state(GameState::Idle))
+                        .and(any_with_component::<Camera>),
+                ),
             )
             .insert_resource(TargetPos(self.0));
     }

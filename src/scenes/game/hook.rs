@@ -15,6 +15,7 @@ use super::{
     map_state::MapState,
     player::PlayerState,
     rock::{Rock, RockState},
+    GameState,
 };
 
 pub struct HookPlugin;
@@ -25,7 +26,7 @@ impl Plugin for HookPlugin {
             Update,
             (init, update, user_interact)
                 .chain()
-                .run_if(in_state(AppState::Game)),
+                .run_if(in_state(AppState::Game).and(in_state(GameState::Idle))),
         );
     }
 }

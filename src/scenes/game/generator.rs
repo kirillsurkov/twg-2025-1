@@ -2,7 +2,7 @@ use bevy::{gltf::GltfMaterialName, prelude::*};
 
 use crate::scenes::AppState;
 
-use super::builder::Ready;
+use super::{builder::Ready, GameState};
 
 pub struct GeneratorPlugin;
 
@@ -10,7 +10,9 @@ impl Plugin for GeneratorPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            (update, init).chain().run_if(in_state(AppState::Game)),
+            (update, init)
+                .chain()
+                .run_if(in_state(AppState::Game).and(in_state(GameState::Idle))),
         );
     }
 }

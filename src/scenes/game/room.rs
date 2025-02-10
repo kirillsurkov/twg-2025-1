@@ -10,6 +10,7 @@ use super::{
     builder::Ready,
     game_cursor::{CursorLayer, GameCursor},
     player::PlayerState,
+    GameState,
 };
 
 pub struct RoomPlugin;
@@ -19,7 +20,8 @@ impl Plugin for RoomPlugin {
         app.add_plugins(ProceduralMaterialPlugin::<RoomFloorMaterial>::default())
             .add_systems(
                 Update,
-                (update_floor_material, (update, init).chain()).run_if(in_state(AppState::Game)),
+                (update_floor_material, (update, init).chain())
+                    .run_if(in_state(AppState::Game).and(in_state(GameState::Idle))),
             );
     }
 }

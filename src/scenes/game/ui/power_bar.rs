@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::scenes::AppState;
+use crate::scenes::{game::GameState, AppState};
 
 use super::palette::{COLOR_POWER_HIGH, COLOR_POWER_LOW, COLOR_TEXT};
 
@@ -10,7 +10,9 @@ impl Plugin for GameUiPowerBarPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            (init, update).chain().run_if(in_state(AppState::Game)),
+            (init, update)
+                .chain()
+                .run_if(in_state(AppState::Game).and(in_state(GameState::Idle))),
         );
     }
 }

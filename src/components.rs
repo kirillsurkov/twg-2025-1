@@ -10,6 +10,7 @@ pub mod collisions;
 pub mod game_button;
 pub mod material_modifier;
 pub mod procedural_material;
+pub mod music_player;
 
 pub struct ComponentsPlugin;
 

@@ -154,6 +154,9 @@ fn construct(
         next_player_state.set(PlayerState::Idle);
         commands.remove_resource::<BuildEntity>();
         map_state.add_room(game_cursor.x, game_cursor.y, node.clone());
+        for (cargo, count) in node.recipe() {
+            map_state.harvest(cargo, -count);
+        }
     }
 }
 

@@ -2,13 +2,16 @@ use bevy::{gltf::GltfMaterialName, prelude::*};
 
 use crate::scenes::AppState;
 
-use super::{builder::Ready, map_state::MapState, room::RoomFloorMaterial};
+use super::{builder::Ready, room::RoomFloorMaterial, GameState};
 
 pub struct PrimaryBlockPlugin;
 
 impl Plugin for PrimaryBlockPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, init_primary_block.run_if(in_state(AppState::Game)));
+        app.add_systems(
+            Update,
+            init_primary_block.run_if(in_state(AppState::Game).and(in_state(GameState::Idle))),
+        );
     }
 }
 

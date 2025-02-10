@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::scenes::AppState;
+use crate::scenes::{game::GameState, AppState};
 
 use super::palette::COLOR_CONTAINER;
 
@@ -8,7 +8,10 @@ pub struct GameUiContainerPlugin;
 
 impl Plugin for GameUiContainerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, init.run_if(in_state(AppState::Game)));
+        app.add_systems(
+            Update,
+            init.run_if(in_state(AppState::Game).and(in_state(GameState::Idle))),
+        );
     }
 }
 

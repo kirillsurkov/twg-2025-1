@@ -20,9 +20,11 @@ use crate::{
 };
 
 use super::{
+    builder::BuildEntity,
     game_cursor::{CursorLayer, GameCursor},
     map_state::{Cargo, MapLayer, MapState},
     room::Room,
+    GameState,
 };
 
 pub struct RockPlugin;
@@ -32,7 +34,8 @@ impl Plugin for RockPlugin {
         app.add_plugins(ProceduralMaterialPlugin::<RockMaterial>::default())
             .add_systems(
                 Update,
-                (init, update_pos, rock_spawner.after(init)).run_if(in_state(AppState::Game)),
+                (init, update_pos, rock_spawner.after(init))
+                    .run_if(in_state(AppState::Game).and(in_state(GameState::Idle))),
             );
     }
 }
@@ -207,6 +210,7 @@ fn update_pos(
     mut commands: Commands,
     mut rocks: Query<(Entity, &Rock, &RockState, &mut Transform), Without<Room>>,
     mut map_state: ResMut<MapState>,
+    build_entity: Option<Res<BuildEntity>>,
     rooms: Query<&Transform, With<Room>>,
     collisions: Res<Collisions>,
     time: Res<Time>,
@@ -236,6 +240,11 @@ fn update_pos(
         );
 
         for room in collisions.get(entity) {
+            if let Some(BuildEntity(build_entity)) = build_entity.as_deref() {
+                if build_entity == room {
+                    continue;
+                }
+            }
             if let Ok(transform) = rooms.get(*room) {
                 let IVec2 { x, y } = GameCursor::world_to_game(
                     transform.translation.x,
@@ -291,7 +300,7 @@ fn rock_spawner(
     let min = GameCursor::game_to_world(min.x, min.y, CursorLayer::Room);
     let max = GameCursor::game_to_world(max.x, max.y, CursorLayer::Room);
 
-    let room_radius = 0.5 * (1.0 + CursorLayer::Room.size() * SQRT_2);
+    let room_radius = CursorLayer::Room.size() * SQRT_2;
 
     let mut rocks = vec![];
 

@@ -5,9 +5,12 @@ use bevy::{
     prelude::*,
     utils::{HashMap, HashSet},
 };
+use rand_distr::num_traits::Zero;
 use strum_macros::EnumIter;
 
 use crate::scenes::AppState;
+
+use super::GameState;
 
 pub struct MapStatePlugin;
 
@@ -15,7 +18,8 @@ impl Plugin for MapStatePlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(MapState::default()).add_systems(
             PreUpdate,
-            (tick, check_connectivity).run_if(in_state(AppState::Game)),
+            (tick, check_connectivity)
+                .run_if(in_state(AppState::Game).and(in_state(GameState::Idle))),
         );
     }
 }
@@ -90,16 +94,16 @@ impl MapNode {
         }
     }
 
-    pub fn recipe(&self) -> BTreeMap<Cargo, u32> {
+    pub fn recipe(&self) -> BTreeMap<Cargo, f32> {
         match self {
             MapNode::PrimaryBlock => vec![],
-            MapNode::EmptyRoom => vec![(Cargo::Silicon, 10)],
-            MapNode::Furnace => vec![(Cargo::Silicon, 10), (Cargo::Uranium, 1)],
-            MapNode::Generator => vec![(Cargo::Silicon, 10), (Cargo::UraniumRods, 5)],
-            MapNode::Crusher => vec![(Cargo::Silicon, 30), (Cargo::CopperPlates, 20)],
-            MapNode::Cargo => vec![(Cargo::CopperPlates, 20)],
-            MapNode::Hook => vec![(Cargo::Silicon, 50)],
-            MapNode::Enrichment => vec![(Cargo::Silicon, 100), (Cargo::UraniumRods, 30)],
+            MapNode::EmptyRoom => vec![(Cargo::Silicon, 10.0)],
+            MapNode::Furnace => vec![(Cargo::Silicon, 10.0), (Cargo::Ice, 5.0)],
+            MapNode::Generator => vec![(Cargo::Silicon, 20.0), (Cargo::UraniumRods, 2.0)],
+            MapNode::Crusher => vec![(Cargo::Silicon, 30.0), (Cargo::CopperPlates, 10.0)],
+            MapNode::Cargo => vec![(Cargo::Silicon, 10.0), (Cargo::CopperPlates, 5.0)],
+            MapNode::Hook => vec![(Cargo::Silicon, 50.0), (Cargo::Water, 20.0)],
+            MapNode::Enrichment => vec![(Cargo::Silicon, 100.0), (Cargo::UraniumRods, 30.0)],
         }
         .into_iter()
         .collect()
@@ -130,7 +134,8 @@ pub struct MapState {
     map_by_layer: HashMap<MapLayer, HashMap<IVec2, MapNode>>,
     bounds_min: IVec2,
     bounds_max: IVec2,
-    total_energy: f32,
+    energy_available: f32,
+    energy_in_use: f32,
     cargo: HashMap<Cargo, f32>,
     cargo_max: HashMap<Cargo, f32>,
 }
@@ -257,6 +262,12 @@ impl MapState {
         *cur += count;
         *cur = cur.min(self.cargo_max.get(&cargo).cloned().unwrap_or_default());
     }
+
+    pub fn energy_ratio(&self) -> f32 {
+        ((self.energy_available - self.energy_in_use) / self.energy_available)
+            .max(0.0)
+            .min(1.0)
+    }
 }
 
 fn tick(mut map_state: ResMut<MapState>, time: Res<Time>) {
@@ -264,30 +275,36 @@ fn tick(mut map_state: ResMut<MapState>, time: Res<Time>) {
         return;
     };
 
-    let mut total_energy = 0.0;
+    let mut energy_available = 0.0;
+    let mut energy_in_use = 0.0;
     let mut cargo_max = HashMap::<Cargo, f32>::new();
     for node in map.values() {
         match node {
             MapNode::PrimaryBlock => {
-                total_energy += 100.0;
+                energy_available += 50.0;
                 *cargo_max.entry(Cargo::Silicon).or_default() += 10.0;
                 *cargo_max.entry(Cargo::Ice).or_default() += 10.0;
                 *cargo_max.entry(Cargo::Copper).or_default() += 10.0;
                 *cargo_max.entry(Cargo::Uranium).or_default() += 1.0;
+                *cargo_max.entry(Cargo::CopperPlates).or_default() += 10.0;
             }
             MapNode::EmptyRoom => {
-                total_energy -= 5.0;
+                energy_in_use += 5.0;
             }
             MapNode::Furnace => {
-                total_energy -= 20.0;
+                energy_in_use += 5.0;
+                energy_in_use += 20.0;
             }
             MapNode::Generator => {
-                total_energy += 100.0;
+                energy_in_use += 5.0;
+                energy_available += 100.0;
             }
             MapNode::Crusher => {
-                total_energy -= 10.0;
+                energy_in_use += 5.0;
+                energy_in_use += 10.0;
             }
             MapNode::Cargo => {
+                energy_in_use += 5.0;
                 *cargo_max.entry(Cargo::Stone).or_default() += 10.0;
                 *cargo_max.entry(Cargo::Silicon).or_default() += 10.0;
                 *cargo_max.entry(Cargo::Ice).or_default() += 10.0;
@@ -300,10 +317,12 @@ fn tick(mut map_state: ResMut<MapState>, time: Res<Time>) {
                 *cargo_max.entry(Cargo::Batteries).or_default() += 1.0;
             }
             MapNode::Hook => {
-                total_energy -= 50.0;
+                energy_in_use += 5.0;
+                energy_in_use += 50.0;
             }
             MapNode::Enrichment => {
-                total_energy -= 200.0;
+                energy_in_use += 5.0;
+                energy_in_use += 200.0;
             }
         }
     }
@@ -313,7 +332,12 @@ fn tick(mut map_state: ResMut<MapState>, time: Res<Time>) {
     }
 
     map_state.cargo_max = cargo_max;
-    map_state.total_energy = total_energy;
+    map_state.energy_available = energy_available;
+    map_state.energy_in_use = energy_in_use;
+
+    if map_state.energy_ratio().is_zero() {
+        return;
+    }
 
     let delta = time.delta_secs();
 
@@ -335,13 +359,9 @@ fn tick(mut map_state: ResMut<MapState>, time: Res<Time>) {
             from_min = 0.0;
         }
 
-        print!("{from_min} ");
-
         let from_sub = (speed * delta).min(from_min);
         let to_add = (from_sub * ratio).min(to_max - to_cur);
         let from_sub = to_add / ratio;
-
-        println!("{from_sub}");
 
         for from in &from {
             *map_state.cargo.entry(from.clone()).or_default() -= from_sub;

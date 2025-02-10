@@ -26,7 +26,11 @@ use ui::{
     GameUiPlugin,
 };
 
-use crate::components::mouse_event::{Clicked, Dehovered, Hovered};
+use crate::components::{
+    game_button::GameButton,
+    mouse_event::{Clicked, Dehovered, Hovered},
+    music_player::MusicPlayerPlugin,
+};
 
 use super::{AppSceneRoot, AppState};
 
@@ -45,7 +49,7 @@ mod player;
 mod primary_block;
 mod rock;
 mod room;
-mod ui;
+pub mod ui;
 
 pub struct GamePlugin;
 
@@ -53,6 +57,7 @@ impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(GameUiPlugin)
             .add_plugins(MapStatePlugin)
+            .add_plugins(MusicPlayerPlugin)
             .add_plugins(GameCameraPlugin(Vec3::new(0.0, 0.0, 15.0)))
             .add_plugins(PlayerPlugin)
             .add_plugins(GameCursorPlugin)
@@ -68,7 +73,14 @@ impl Plugin for GamePlugin {
             .add_plugins(RockPlugin)
             .add_plugins(HookPlugin)
             .add_systems(OnEnter(AppState::Game), setup)
-            .add_systems(Update, update.run_if(resource_exists::<GameEntities>))
+            .add_systems(
+                Update,
+                (
+                    update.run_if(resource_exists::<GameEntities>),
+                    process_spawn_requests,
+                )
+                    .chain(),
+            )
             .insert_state(GameState::Idle)
             .insert_resource(TooltipState::default());
     }
@@ -77,6 +89,7 @@ impl Plugin for GamePlugin {
 #[derive(Resource)]
 struct GameEntities {
     game_field: Entity,
+    pause_menu: Entity,
     power_bar: Entity,
     tooltip: Entity,
     tooltip_title: Entity,
@@ -94,6 +107,35 @@ struct TooltipState {
     desc: String,
 }
 
+#[derive(Resource)]
+struct SpawnRequest(MapNode);
+
+fn process_spawn_requests(
+    mut commands: Commands,
+    mut next_state: ResMut<NextState<PlayerState>>,
+    map_state: Res<MapState>,
+    request: Option<Res<SpawnRequest>>,
+) {
+    let Some(SpawnRequest(node)) = request.as_deref() else {
+        return;
+    };
+
+    commands.remove_resource::<SpawnRequest>();
+
+    let mut success = true;
+    for (cargo, count) in node.recipe() {
+        if map_state.cargo_count(cargo.clone()).0 < count {
+            success = false;
+            break;
+        }
+    }
+
+    if success {
+        next_state.set(PlayerState::Construct(node.clone()));
+    } else {
+    }
+}
+
 fn item_spawner(node: MapNode) -> impl Fn(&mut ChildBuilder) {
     move |parent| {
         parent
@@ -104,8 +146,8 @@ fn item_spawner(node: MapNode) -> impl Fn(&mut ChildBuilder) {
             )
             .observe({
                 let node = node.clone();
-                move |_: Trigger<Clicked>, mut next_state: ResMut<NextState<PlayerState>>| {
-                    next_state.set(PlayerState::Construct(node.clone()));
+                move |_: Trigger<Clicked>, mut commands: Commands| {
+                    commands.insert_resource(SpawnRequest(node.clone()));
                 }
             })
             .observe({
@@ -128,7 +170,14 @@ fn item_spawner(node: MapNode) -> impl Fn(&mut ChildBuilder) {
     }
 }
 
-fn setup(mut commands: Commands, mut map_state: ResMut<MapState>, root_entity: Res<AppSceneRoot>) {
+fn setup(
+    mut commands: Commands,
+    mut map_state: ResMut<MapState>,
+    root_entity: Res<AppSceneRoot>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
+    next_state.set(GameState::Idle);
+
     let directional_light = |x, y| {
         (
             DirectionalLight {
@@ -170,6 +219,7 @@ fn setup(mut commands: Commands, mut map_state: ResMut<MapState>, root_entity: R
     let mut tooltip_cost = Entity::PLACEHOLDER;
     let mut tooltip_desc = Entity::PLACEHOLDER;
     let mut game_field = Entity::PLACEHOLDER;
+    let mut pause_menu = Entity::PLACEHOLDER;
     let mut power_bar = Entity::PLACEHOLDER;
     let mut info_thumbnail = Entity::PLACEHOLDER;
     let mut cargo_counts = vec![];
@@ -272,12 +322,49 @@ fn setup(mut commands: Commands, mut map_state: ResMut<MapState>, root_entity: R
                         ..Default::default()
                     })
                     .insert(Button)
+                    .with_children(|parent| {
+                        pause_menu = parent
+                            .spawn((
+                                Visibility::Hidden,
+                                Node {
+                                    width: Val::Percent(100.0),
+                                    height: Val::Percent(100.0),
+                                    align_items: AlignItems::Center,
+                                    justify_content: JustifyContent::Center,
+                                    flex_direction: FlexDirection::Column,
+                                    row_gap: Val::Px(10.0),
+                                    ..Default::default()
+                                },
+                                BackgroundColor(Color::BLACK.with_alpha(0.8)),
+                            ))
+                            .with_child(Text::new("PAUSED"))
+                            .with_child(Node {
+                                height: Val::Px(100.0),
+                                ..Default::default()
+                            })
+                            .with_children(|parent| {
+                                parent.spawn(GameButton::new("Resume", 120.0)).observe(
+                                    |_: Trigger<Clicked>, mut next: ResMut<NextState<GameState>>| {
+                                        next.set(GameState::Idle);
+                                    },
+                                );
+                            })
+                            .with_children(|parent| {
+                                parent.spawn(GameButton::new("Exit", 0.0)).observe(
+                                    |_: Trigger<Clicked>, mut next: ResMut<NextState<AppState>>| {
+                                        next.set(AppState::MainMenu);
+                                    },
+                                );
+                            })
+                            .id();
+                    })
                     .id();
                 parent
                     .spawn((
                         Node {
                             width: Val::Percent(100.0),
                             flex_shrink: 0.0,
+                            display: Display::None,
                             ..Default::default()
                         },
                         BackgroundColor(COLOR_CONTAINER),
@@ -335,6 +422,7 @@ fn setup(mut commands: Commands, mut map_state: ResMut<MapState>, root_entity: R
     commands.insert_resource(GameEntities {
         power_bar,
         game_field,
+        pause_menu,
         tooltip,
         tooltip_title,
         tooltip_cost,
@@ -360,9 +448,21 @@ fn update(
     game_cursor: Option<Res<GameCursor>>,
     assets: Res<AssetServer>,
     mut cargo_counts: Query<&mut GameUiCargoCount>,
+    game_state: Res<State<GameState>>,
 ) {
+    if let Ok(mut visibility) = visibilities.get_mut(state.pause_menu) {
+        *visibility = match game_state.get() {
+            GameState::Idle => Visibility::Hidden,
+            GameState::Pause => Visibility::Inherited,
+        };
+    }
+
     if let Ok(mut power_bar) = power_bars.get_mut(state.power_bar) {
-        power_bar.power = (power_bar.power + time.delta_secs()).fract();
+        let dir = (map_state.energy_ratio() - power_bar.power)
+            .max(-1.0)
+            .min(1.0);
+
+        power_bar.power += 10.0 * time.delta_secs() * dir;
     }
 
     match interactions.get(state.game_field) {

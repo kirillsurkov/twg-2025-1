@@ -1,9 +1,11 @@
 use std::f32::consts::PI;
 
 use bevy::{
+    audio::Volume,
+    core_pipeline::{bloom::Bloom, oit::OrderIndependentTransparencySettings},
     dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin},
     prelude::*,
-    window::WindowResized,
+    window::{WindowMode, WindowResized},
 };
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use bevy_rapier2d::{
@@ -13,8 +15,7 @@ use bevy_rapier2d::{
 use components::ComponentsPlugin;
 use noisy_bevy::NoisyShaderPlugin;
 use rand::Rng;
-use rand_distr::num_traits::Zero;
-use scenes::AppScenesPlugin;
+use scenes::{main_menu::settings::GameSettings, AppScenesPlugin};
 
 mod components;
 mod scenes;
@@ -50,6 +51,38 @@ fn on_resize(mut commands: Commands, mut resize_reader: EventReader<WindowResize
     }
 }
 
+fn apply_settings(
+    settings: Res<GameSettings>,
+    mut playbacks: Query<&mut PlaybackSettings>,
+    mut oits: Query<&mut OrderIndependentTransparencySettings>,
+    mut blooms: Query<&mut Bloom>,
+    mut window: Query<&mut Window>,
+) {
+    for mut playback in playbacks.iter_mut() {
+        playback.volume = Volume::new(settings.music_volume);
+    }
+
+    for mut oit in oits.iter_mut() {
+        if oit.layer_count != settings.oit_layers as i32 {
+            oit.layer_count = settings.oit_layers as i32;
+        }
+    }
+
+    for mut bloom in blooms.iter_mut() {
+        bloom.intensity = settings.bloom as u32 as f32 * 0.15;
+    }
+
+    if let Ok(mut window) = window.get_single_mut() {
+        let is_fullscreen = matches!(window.mode, WindowMode::Fullscreen(_));
+        if is_fullscreen && !settings.fullscreen {
+            window.mode = WindowMode::Windowed;
+        }
+        if !is_fullscreen && settings.fullscreen {
+            window.mode = WindowMode::Fullscreen(MonitorSelection::Current);
+        }
+    }
+}
+
 fn main() {
     App::new()
         .add_plugins((DefaultPlugins.set(WindowPlugin {
@@ -59,18 +92,18 @@ fn main() {
             }),
             ..Default::default()
         }),))
-        .add_plugins(WorldInspectorPlugin::new())
-        .add_plugins(FpsOverlayPlugin::default())
+        // .add_plugins(WorldInspectorPlugin::new())
+        // .add_plugins(FpsOverlayPlugin::default())
         .add_plugins(NoisyShaderPlugin)
         .add_plugins(ComponentsPlugin)
         .add_plugins(AppScenesPlugin)
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
         // .add_plugins(RapierDebugRenderPlugin::default())
         .insert_resource(AmbientLight::NONE)
-        .insert_resource(FpsOverlayConfig {
-            // enabled: false,
-            ..Default::default()
-        })
-        .add_systems(PreUpdate, on_resize)
+        // .insert_resource(FpsOverlayConfig {
+        //     // enabled: false,
+        //     ..Default::default()
+        // })
+        .add_systems(PreUpdate, (on_resize, apply_settings))
         .run();
 }
