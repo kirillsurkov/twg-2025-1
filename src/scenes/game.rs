@@ -4,6 +4,7 @@ use builder::{BuilderPlugin, Enabled};
 use camera::GameCameraPlugin;
 use cargo::CargoPlugin;
 use crusher::CrusherPlugin;
+use enrichment::EnrichmentPlugin;
 use furnace::FurnacePlugin;
 use game_cursor::{GameCursorActive, GameCursorPlugin};
 use generator::GeneratorPlugin;
@@ -33,6 +34,7 @@ mod builder;
 mod camera;
 mod cargo;
 mod crusher;
+mod enrichment;
 mod furnace;
 mod game_cursor;
 mod generator;
@@ -60,6 +62,7 @@ impl Plugin for GamePlugin {
             .add_plugins(CargoPlugin)
             .add_plugins(FurnacePlugin)
             .add_plugins(GeneratorPlugin)
+            .add_plugins(EnrichmentPlugin)
             .add_plugins(CrusherPlugin)
             .add_plugins(RockPlugin)
             .add_plugins(HookPlugin)
@@ -259,6 +262,12 @@ fn setup(mut commands: Commands, root_entity: Res<AppSceneRoot>) {
                             next_state.set(PlayerState::Construct(Structure::Hook));
                         },
                     );
+                }).with_children(|parent| {
+                    parent
+                        .spawn(GameUiContainerItem::new("Enrichment station").button())
+                        .observe(|_: Trigger<Clicked>, mut next_state: ResMut<NextState<PlayerState>>| {
+                            next_state.set(PlayerState::Construct(Structure::Enrichment));
+                        });
                 });
         });
     });

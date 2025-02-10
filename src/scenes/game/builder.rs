@@ -11,6 +11,7 @@ use super::{
     build_material::{BuildMaterial, BuildMaterialSettings, ExtendedBuildMaterial},
     cargo::Cargo,
     crusher::Crusher,
+    enrichment::Enrichment,
     furnace::Furnace,
     game_cursor::{CursorLayer, GameCursor},
     generator::Generator,
@@ -111,6 +112,7 @@ fn construct(
             Structure::Crusher => commands.spawn(Crusher),
             Structure::Cargo => commands.spawn(Cargo),
             Structure::Hook => commands.spawn(Hook(true)),
+            Structure::Enrichment => commands.spawn(Enrichment),
         }
         .insert(StructureState {
             action: ActionState::Idle,

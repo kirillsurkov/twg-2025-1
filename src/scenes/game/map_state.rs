@@ -24,6 +24,7 @@ pub enum Structure {
     Crusher,
     Cargo,
     Hook,
+    Enrichment,
 }
 
 #[derive(PartialEq, Clone, Debug)]
