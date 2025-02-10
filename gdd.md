@@ -1,6 +1,6 @@
 # Untitled space game
 - [ ] Loading screen
-- [ ] Main menu
+- [x] Main menu
 - [ ] Game scene
     - [x] Background
     - [ ] Game goal
@@ -16,41 +16,41 @@
         - [ ] Extension blocks
             - [x] 3D model
             - [x] Textures
-            - [ ] Logic
+            - [x] Logic
             - [x] Building
             - [x] Destructing (cascade)
             - [ ] Main structures
                 - [ ] Furnace
                     - [x] 3D model
                     - [x] Textures
-                    - [ ] Logic
+                    - [x] Logic
                 - [ ] Stone crusher
                     - [x] 3D model
                     - [x] Textures
-                    - [ ] Logic
+                    - [x] Logic
                 - [ ] Enrichment station
-                    - [ ] 3D model
-                    - [ ] Textures
-                    - [ ] Logic
+                    - [x] 3D model
+                    - [x] Textures
+                    - [x] Logic
                 - [ ] Cargo
-                    - [ ] 3D model
-                    - [ ] Textures
-                    - [ ] Logic
+                    - [x] 3D model
+                    - [x] Textures
+                    - [x] Logic
                 - [ ] Power generator
                     - [x] 3D model
                     - [x] Textures
-                    - [ ] Logic
+                    - [x] Logic
             - [ ] Secondary structures
                 - [ ] Shield
                 - [x] Hook
     - [ ] Asteroids
         - [x] Spawn logic (Can't hit main ship block)
-        - [ ] Gray asteroid (Silicon)
+        - [x] Gray asteroid (Silicon)
         - [x] Red asteroid (Copper)
-        - [ ] Green asteroid (Uranium)
-        - [ ] Blue asteroid (Water)
-        - [ ] Yellow asteroid (Aurelium)
-    - [ ] Craft recipes
-    - [ ] UI
+        - [x] Green asteroid (Uranium)
+        - [x] Blue asteroid (Water)
+        - [x] Yellow asteroid (Aurelium)
+    - [x] Craft recipes
+    - [x] UI
 - [ ] Titles
 - [x] Music
