@@ -145,9 +145,9 @@ fn init(
 
 fn update_pos(
     mut commands: Commands,
-    mut rocks: Query<(Entity, &Rock, &RockState, &mut Transform)>,
+    mut rocks: Query<(Entity, &Rock, &RockState, &mut Transform), Without<Room>>,
     mut map_state: ResMut<MapState>,
-    rooms: Query<&Room>,
+    rooms: Query<&Transform, With<Room>>,
     collisions: Res<Collisions>,
     time: Res<Time>,
 ) {
@@ -176,8 +176,13 @@ fn update_pos(
         );
 
         for room in collisions.get(entity) {
-            if let Ok(Room::Fixed(x, y)) = rooms.get(*room) {
-                map_state.remove(*x, *y, MapLayer::Main);
+            if let Ok(transform) = rooms.get(*room) {
+                let IVec2 { x, y } = GameCursor::world_to_game(
+                    transform.translation.x,
+                    transform.translation.y,
+                    CursorLayer::Room,
+                );
+                map_state.remove(x, y, MapLayer::Main);
                 commands.entity(entity).try_despawn_recursive();
             }
         }

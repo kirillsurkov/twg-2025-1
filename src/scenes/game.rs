@@ -1,9 +1,12 @@
 use bevy::prelude::*;
+use build_material::BuildMaterialPlugin;
+use builder::{BuilderPlugin, Enabled};
 use camera::GameCameraPlugin;
+use furnace::FurnacePlugin;
 use game_cursor::{GameCursorActive, GameCursorPlugin};
 use hook::{Hook, HookPlugin};
 use light_consts::lux::CLEAR_SUNRISE;
-use map_state::MapStatePlugin;
+use map_state::{MapStatePlugin, Structure};
 use player::{PlayerPlugin, PlayerState};
 use primary_block::{PrimaryBlock, PrimaryBlockPlugin};
 use rock::RockPlugin;
@@ -22,6 +25,8 @@ use crate::components::clicked_event::Clicked;
 
 use super::{AppSceneRoot, AppState};
 
+mod build_material;
+mod builder;
 mod camera;
 mod game_cursor;
 mod hook;
@@ -41,6 +46,8 @@ impl Plugin for GamePlugin {
             .add_plugins(GameCameraPlugin(Vec3::new(0.0, 0.0, 15.0)))
             .add_plugins(PlayerPlugin)
             .add_plugins(GameCursorPlugin)
+            .add_plugins(BuildMaterialPlugin)
+            .add_plugins(BuilderPlugin)
             .add_plugins(PrimaryBlockPlugin)
             .add_plugins(RoomPlugin)
             .add_plugins(RockPlugin)
@@ -75,7 +82,7 @@ fn setup(mut commands: Commands, root_entity: Res<AppSceneRoot>) {
         root.spawn(directional_light(-1.0, 1.0));
         root.spawn(directional_light(-1.0, -1.0));
         root.spawn(PrimaryBlock { x: 0, y: 0 })
-            .with_child(Hook(false));
+            .with_child((Hook(false), Enabled));
     });
 
     // commands.spawn((
@@ -199,7 +206,7 @@ fn setup(mut commands: Commands, root_entity: Res<AppSceneRoot>) {
                         .spawn(GameUiContainerItem::new("Room").button())
                         .observe(
                         |_: Trigger<Clicked>, mut next_state: ResMut<NextState<PlayerState>>| {
-                            next_state.set(PlayerState::Construct);
+                            next_state.set(PlayerState::Construct(Structure::EmptyRoom));
                         },
                     );
                 })
@@ -223,6 +230,15 @@ fn setup(mut commands: Commands, root_entity: Res<AppSceneRoot>) {
                         .observe(|_: Trigger<Clicked>| {
                             println!("Generator clicked");
                         });
+                })
+                .with_children(|parent| {
+                    parent
+                        .spawn(GameUiContainerItem::new("Hook").button())
+                        .observe(
+                        |_: Trigger<Clicked>, mut next_state: ResMut<NextState<PlayerState>>| {
+                            next_state.set(PlayerState::Construct(Structure::Hook));
+                        },
+                    );
                 });
         });
     });

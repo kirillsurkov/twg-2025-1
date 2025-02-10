@@ -10,6 +10,7 @@ use crate::{
 };
 
 use super::{
+    builder::{Enabled, Ready},
     game_cursor::{update_cursor, CursorLayer, GameCursor},
     player::{PlayerInteractEntity, PlayerState},
     rock::{Rock, RockState},
@@ -107,6 +108,7 @@ fn init(
                         SceneRoot(
                             asset_server.load(GltfAssetLabel::Scene(0).from_asset("hook_base.glb")),
                         ),
+                        Ready,
                         LoadingState::Done { body, head, radar },
                         HookState::Idle,
                     ))
@@ -121,7 +123,7 @@ fn set_state(
     mut commands: Commands,
     mut next_player_state: ResMut<NextState<PlayerState>>,
     game_cursor: Option<Res<GameCursor>>,
-    hooks: Query<(Entity, &LoadingState, &GlobalTransform), With<Hook>>,
+    hooks: Query<(Entity, &LoadingState, &GlobalTransform), (With<Hook>, With<Enabled>)>,
 ) {
     // WTF
     let Some(game_cursor) = game_cursor else {
@@ -163,7 +165,10 @@ fn user_interact(
     mut commands: Commands,
     game_cursor: Option<Res<GameCursor>>,
     interact: Res<PlayerInteractEntity>,
-    mut hooks: Query<(&LoadingState, &mut HookState, &GlobalTransform), With<Hook>>,
+    mut hooks: Query<
+        (&LoadingState, &mut HookState, &GlobalTransform),
+        (With<Hook>, With<Enabled>),
+    >,
 ) {
     // WTF
     let Some(game_cursor) = game_cursor else {
@@ -199,7 +204,7 @@ fn user_interact(
 
 fn update(
     mut commands: Commands,
-    mut hooks: Query<(&Hook, &LoadingState, &mut HookState), With<Hook>>,
+    mut hooks: Query<(&Hook, &LoadingState, &mut HookState), (With<Hook>, With<Enabled>)>,
     mut hook_bodies: Query<(&GlobalTransform, &mut Visibility), Without<RockState>>,
     mut rocks: Query<(&Rock, &mut RockState, &mut Transform)>,
     mut transforms: Query<&mut Transform, Without<RockState>>,

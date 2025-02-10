@@ -2,6 +2,8 @@ use bevy::{dev_tools::fps_overlay::FpsOverlayConfig, prelude::*};
 
 use crate::scenes::AppState;
 
+use super::map_state::Structure;
+
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
@@ -14,7 +16,7 @@ impl Plugin for PlayerPlugin {
 #[derive(States, Debug, Hash, PartialEq, Eq, Clone)]
 pub enum PlayerState {
     Idle,
-    Construct,
+    Construct(Structure),
     Destruct,
     Interact,
 }
@@ -34,13 +36,6 @@ fn listen_inputs(
         match state.get() {
             PlayerState::Idle => {}
             _ => next_state.set(PlayerState::Idle),
-        }
-    }
-
-    if keyboard.just_pressed(KeyCode::KeyB) {
-        match state.get() {
-            PlayerState::Construct => next_state.set(PlayerState::Idle),
-            _ => next_state.set(PlayerState::Construct),
         }
     }
 

@@ -16,10 +16,17 @@ impl Plugin for MapStatePlugin {
     }
 }
 
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub enum Structure {
+    EmptyRoom,
+    Furnace,
+    Hook,
+}
+
 #[derive(PartialEq, Clone, Debug)]
 enum MapNode {
     PrimaryBlock,
-    Room,
+    Room(Structure),
 }
 
 #[derive(PartialEq, Eq, Hash)]
@@ -68,7 +75,7 @@ impl MapState {
     }
 
     pub fn add_room(&mut self, x: i32, y: i32) {
-        self.add(x, y, MapNode::Room, MapLayer::Main);
+        self.add(x, y, MapNode::Room(Structure::EmptyRoom), MapLayer::Main);
     }
 
     pub fn sync_build(&mut self) {
@@ -80,22 +87,30 @@ impl MapState {
         self.map_by_layer.insert(MapLayer::Build, main_layer);
     }
 
-    pub fn is_available(&self, x: i32, y: i32) -> bool {
+    pub fn is_available(&self, x: i32, y: i32, structure: Structure) -> bool {
         let Some(map) = self.map_by_layer.get(&MapLayer::Main) else {
             return false;
         };
-        !map.contains_key(&IVec2::new(x, y))
-            && (map.contains_key(&IVec2::new(x + 1, y))
-                || map.contains_key(&IVec2::new(x - 1, y))
-                || map.contains_key(&IVec2::new(x, y + 1))
-                || map.contains_key(&IVec2::new(x, y - 1)))
+        match structure {
+            Structure::EmptyRoom => {
+                !map.contains_key(&IVec2::new(x, y))
+                    && (map.contains_key(&IVec2::new(x + 1, y))
+                        || map.contains_key(&IVec2::new(x - 1, y))
+                        || map.contains_key(&IVec2::new(x, y + 1))
+                        || map.contains_key(&IVec2::new(x, y - 1)))
+            }
+            _ => match map.get(&IVec2::new(x, y)) {
+                Some(MapNode::Room(Structure::EmptyRoom)) => true,
+                _ => false,
+            },
+        }
     }
 
     pub fn room(&self, x: i32, y: i32, layer: MapLayer) -> bool {
         self.map_by_layer
             .get(&layer)
             .is_some_and(|m| match m.get(&IVec2::new(x, y)) {
-                Some(MapNode::Room) => true,
+                Some(MapNode::Room(_)) => true,
                 _ => false,
             })
     }
