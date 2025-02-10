@@ -28,6 +28,7 @@ use super::{AppSceneRoot, AppState};
 mod build_material;
 mod builder;
 mod camera;
+mod furnace;
 mod game_cursor;
 mod hook;
 mod map_state;
@@ -50,6 +51,7 @@ impl Plugin for GamePlugin {
             .add_plugins(BuilderPlugin)
             .add_plugins(PrimaryBlockPlugin)
             .add_plugins(RoomPlugin)
+            .add_plugins(FurnacePlugin)
             .add_plugins(RockPlugin)
             .add_plugins(HookPlugin)
             .add_systems(OnEnter(AppState::Game), setup)
@@ -213,9 +215,11 @@ fn setup(mut commands: Commands, root_entity: Res<AppSceneRoot>) {
                 .with_children(|parent| {
                     parent
                         .spawn(GameUiContainerItem::new("Furnace").button())
-                        .observe(|_: Trigger<Clicked>| {
-                            println!("Furnace clicked");
-                        });
+                        .observe(
+                        |_: Trigger<Clicked>, mut next_state: ResMut<NextState<PlayerState>>| {
+                            next_state.set(PlayerState::Construct(Structure::Furnace));
+                        },
+                    );
                 })
                 .with_children(|parent| {
                     parent
