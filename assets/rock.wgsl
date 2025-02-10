@@ -27,7 +27,7 @@ fn to_linear(nonlinear: vec3<f32>) -> vec3<f32> {
 }
 
 fn depth(uv: vec2<f32>, seed: f32) -> f32 {
-    return fbm_simplex_2d_seeded(uv * 30.0, 3, 2.0, 0.5, 0.0, true);
+    return fbm_simplex_2d_seeded(uv * 30.0, 3, 2.0, 0.5, seed, true);
 }
 
 fn normal(uv: vec2<f32>, delta: vec2<f32>, seed: f32) -> vec3<f32> {

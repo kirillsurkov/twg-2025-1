@@ -57,7 +57,7 @@ fn stars(x: vec2<f32>, num_cells: f32, size: f32, br: f32) -> f32 {
 }
 
 fn fractal_nebula(coord: vec2<f32>, color: vec3<f32>, transparency: f32) -> vec3<f32> {
-    return fbm_simplex_2d(coord, 5, 2.0, 0.5, false) * color * transparency;
+    return fbm_simplex_2d(coord, 10, 2.0, 0.5, false) * color * transparency;
 }
 
 fn dither(color: vec3<f32>, frag_coord: vec2<f32>, levels: f32) -> vec3<f32> {
