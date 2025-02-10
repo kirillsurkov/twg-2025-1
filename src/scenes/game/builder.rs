@@ -11,6 +11,7 @@ use super::{
     build_material::{BuildMaterial, BuildMaterialSettings, ExtendedBuildMaterial},
     furnace::Furnace,
     game_cursor::{CursorLayer, GameCursor},
+    generator::Generator,
     hook::Hook,
     map_state::{MapLayer, MapState, Structure},
     player::PlayerState,
@@ -23,14 +24,7 @@ impl Plugin for BuilderPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Last,
-            (
-                update_material,
-                transit_state,
-                construct,
-                destruct,
-                update,
-            )
-                .chain(),
+            (update_material, transit_state, construct, destruct, update).chain(),
         );
     }
 }
@@ -111,6 +105,7 @@ fn construct(
         let entity = match structure {
             Structure::EmptyRoom => commands.spawn(Room),
             Structure::Furnace => commands.spawn(Furnace),
+            Structure::Generator => commands.spawn(Generator),
             Structure::Hook => commands.spawn(Hook(true)),
         }
         .insert(StructureState {

@@ -20,6 +20,7 @@ impl Plugin for MapStatePlugin {
 pub enum Structure {
     EmptyRoom,
     Furnace,
+    Generator,
     Hook,
 }
 

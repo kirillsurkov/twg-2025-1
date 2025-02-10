@@ -4,6 +4,7 @@ use builder::{BuilderPlugin, Enabled};
 use camera::GameCameraPlugin;
 use furnace::FurnacePlugin;
 use game_cursor::{GameCursorActive, GameCursorPlugin};
+use generator::GeneratorPlugin;
 use hook::{Hook, HookPlugin};
 use light_consts::lux::CLEAR_SUNRISE;
 use map_state::{MapStatePlugin, Structure};
@@ -30,6 +31,7 @@ mod builder;
 mod camera;
 mod furnace;
 mod game_cursor;
+mod generator;
 mod hook;
 mod map_state;
 mod player;
@@ -52,6 +54,7 @@ impl Plugin for GamePlugin {
             .add_plugins(PrimaryBlockPlugin)
             .add_plugins(RoomPlugin)
             .add_plugins(FurnacePlugin)
+            .add_plugins(GeneratorPlugin)
             .add_plugins(RockPlugin)
             .add_plugins(HookPlugin)
             .add_systems(OnEnter(AppState::Game), setup)
@@ -231,8 +234,8 @@ fn setup(mut commands: Commands, root_entity: Res<AppSceneRoot>) {
                 .with_children(|parent| {
                     parent
                         .spawn(GameUiContainerItem::new("Generator").button())
-                        .observe(|_: Trigger<Clicked>| {
-                            println!("Generator clicked");
+                        .observe(|_: Trigger<Clicked>, mut next_state: ResMut<NextState<PlayerState>>| {
+                            next_state.set(PlayerState::Construct(Structure::Generator));
                         });
                 })
                 .with_children(|parent| {
