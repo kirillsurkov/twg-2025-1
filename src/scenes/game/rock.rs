@@ -1,10 +1,14 @@
-use std::f32::consts::{FRAC_PI_4, FRAC_PI_8, SQRT_2, TAU};
+use std::f32::consts::{FRAC_PI_8, SQRT_2, TAU};
 
-use bevy::{gltf::GltfMaterialName, prelude::*, render::render_resource::ShaderType};
+use bevy::{
+    gltf::GltfMaterialName, prelude::*, render::render_resource::ShaderType, utils::HashMap,
+};
 use bevy_rapier2d::prelude::*;
 use ops::FloatPow;
 use rand::Rng;
 use rand_distr::{weighted::WeightedIndex, Distribution};
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
 
 use crate::{
     components::{
@@ -17,7 +21,7 @@ use crate::{
 
 use super::{
     game_cursor::{CursorLayer, GameCursor},
-    map_state::{MapLayer, MapState},
+    map_state::{Cargo, MapLayer, MapState},
     room::Room,
 };
 
@@ -33,12 +37,47 @@ impl Plugin for RockPlugin {
     }
 }
 
+#[derive(Clone, Copy, EnumIter)]
 enum RockKind {
     Silicon,
+    Ice,
     Copper,
     Uranium,
-    Water,
     Aurelium,
+}
+
+impl RockKind {
+    fn probability(self) -> f32 {
+        match self {
+            RockKind::Silicon => 0.5,
+            RockKind::Copper => 0.25,
+            RockKind::Ice => 0.20,
+            RockKind::Uranium => 0.05,
+            RockKind::Aurelium => 0.00,
+        }
+    }
+
+    fn color(self) -> Color {
+        match self {
+            RockKind::Silicon => Color::NONE,
+            RockKind::Copper => Color::srgba(1.0, 0.6, 0.0, 1.0),
+            RockKind::Ice => Color::srgba(0.0, 1.0, 1.0, 1.0),
+            RockKind::Uranium => Color::srgba(0.0, 1.0, 0.0, 1.0),
+            RockKind::Aurelium => Color::srgba(1.0, 1.0, 0.0, 1.0),
+        }
+    }
+
+    fn resources(self) -> HashMap<Cargo, f32> {
+        match self {
+            RockKind::Silicon => vec![(Cargo::Stone, 1.0), (Cargo::Silicon, 5.0)],
+            RockKind::Copper => vec![(Cargo::Copper, 1.0), (Cargo::Silicon, 5.0)],
+            RockKind::Ice => vec![(Cargo::Ice, 1.0), (Cargo::Silicon, 5.0)],
+            RockKind::Uranium => vec![(Cargo::Uranium, 1.0), (Cargo::Silicon, 5.0)],
+            RockKind::Aurelium => vec![(Cargo::Aurelium, 1.0), (Cargo::Silicon, 5.0)],
+        }
+        .into_iter()
+        .collect()
+    }
 }
 
 #[derive(Component)]
@@ -46,7 +85,18 @@ pub struct Rock {
     pub movement_speed: Vec2,
     rotation_speed: f32,
     rotation_axis: Dir3,
+    scale: f32,
     kind: RockKind,
+}
+
+impl Rock {
+    pub fn resources(&self) -> HashMap<Cargo, f32> {
+        self.kind
+            .resources()
+            .into_iter()
+            .map(|(k, v)| (k, v * self.scale))
+            .collect()
+    }
 }
 
 #[derive(Component, PartialEq)]
@@ -64,7 +114,7 @@ enum LoadingState {
 fn init(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    rocks: Query<(Entity, Option<&LoadingState>), With<Rock>>,
+    rocks: Query<(Entity, &Rock, Option<&LoadingState>)>,
     children: Query<&Children>,
     gltf_materials: Query<&GltfMaterialName>,
     mesh_handles: Query<&Mesh3d>,
@@ -73,7 +123,7 @@ fn init(
 ) {
     let mut rng = rand::rng();
 
-    for (entity, state) in rocks.iter() {
+    for (entity, rock, state) in rocks.iter() {
         match state {
             None => {
                 commands.entity(entity).insert((
@@ -125,8 +175,9 @@ fn init(
 
                         commands.entity(entity).with_child((
                             MeshMaterial3d(materials.add(StandardMaterial {
-                                base_color: Color::srgba(1.0, 0.6, 0.0, 1.0),
-                                emissive: LinearRgba::new(1.0, 0.4, 0.0, 1.0) * 0.0,
+                                base_color: rock.kind.color(),
+                                unlit: true,
+                                alpha_mode: AlphaMode::Blend,
                                 metallic: 1.0,
                                 perceptual_roughness: 0.5,
                                 ..Default::default()
@@ -191,11 +242,39 @@ fn update_pos(
                     transform.translation.y,
                     CursorLayer::Room,
                 );
-                map_state.remove_room(x, y, MapLayer::Main);
-                commands.entity(entity).try_despawn_recursive();
+                if map_state.is_room(x, y, MapLayer::Main) {
+                    map_state.remove_room(x, y, MapLayer::Main);
+                    commands.entity(entity).try_despawn_recursive();
+                }
             }
         }
     }
+}
+
+fn ray_intersects_circle(
+    ray_origin: Vec2,
+    ray_dir: Vec2,
+    circle_center: Vec2,
+    radius: f32,
+) -> bool {
+    let oc = circle_center - ray_origin;
+
+    let t_closest = oc.dot(ray_dir);
+    let closest_point = Vec2 {
+        x: ray_origin.x + t_closest * ray_dir.x,
+        y: ray_origin.y + t_closest * ray_dir.y,
+    };
+
+    let dist_to_center_sq = (closest_point.x - circle_center.x).squared()
+        + (closest_point.y - circle_center.y).squared();
+
+    if dist_to_center_sq > radius * radius {
+        return false;
+    }
+
+    let offset = (radius * radius - dist_to_center_sq).sqrt();
+
+    t_closest - offset >= 0.0 || t_closest + offset >= 0.0
 }
 
 fn rock_spawner(
@@ -204,66 +283,92 @@ fn rock_spawner(
     map_state: Res<MapState>,
     time: Res<Time>,
     mut last_spawned: Local<f32>,
+    mut last_spawned_aurelium: Local<f32>,
 ) {
-    if time.elapsed_secs() - *last_spawned < 1.0 {
-        return;
-    }
-
     let mut rng = rand::rng();
 
     let (min, max) = map_state.get_bounds();
-    let min = Vec2::from(GameCursor::game_to_world(min.x, min.y, CursorLayer::Room));
-    let max = Vec2::from(GameCursor::game_to_world(max.x, max.y, CursorLayer::Room));
+    let min = GameCursor::game_to_world(min.x, min.y, CursorLayer::Room);
+    let max = GameCursor::game_to_world(max.x, max.y, CursorLayer::Room);
 
-    let origin = min - Vec2::new(30.0, 20.0);
-    let size = max + Vec2::new(30.0, 20.0) - origin;
+    let room_radius = 0.5 * (1.0 + CursorLayer::Room.size() * SQRT_2);
 
-    let point = rng.random_range(0.0..size.x * 2.0 + size.y * 2.0);
+    let mut rocks = vec![];
 
-    let (spawn_point, flight_dir) = if point < size.y {
-        let x = 0.0;
-        let y = point;
-        (Vec2::new(x, y), Vec2::X)
-    } else if point < size.y + size.x {
-        let x = point - size.y;
-        let y = size.y;
-        (Vec2::new(x, y), Vec2::NEG_Y)
-    } else if point < 2.0 * size.y + size.x {
-        let x = size.x;
-        let y = 2.0 * size.y + size.x - point;
-        (Vec2::new(x, y), Vec2::NEG_X)
-    } else {
-        let x = 2.0 * size.y + 2.0 * size.x - point;
-        let y = 0.0;
-        (Vec2::new(x, y), Vec2::Y)
-    };
+    if time.elapsed_secs() - *last_spawned_aurelium >= 180.0 {
+        let spawn_point1 = Vec2::new(
+            rng.random_range(min.x - room_radius..=max.x + room_radius),
+            max.y + 30.0,
+        );
+        let flight_dir1 = Vec2::NEG_Y;
 
-    let spawn_point = origin + spawn_point;
-    let flight_dir = Vec2::from_angle(rng.random_range(-FRAC_PI_4..FRAC_PI_4)).rotate(flight_dir);
-    let cell_radius = CursorLayer::Room.size() * SQRT_2;
+        let spawn_point2 = Vec2::new(
+            rng.random_range(min.x - room_radius..=max.x + room_radius),
+            min.y - 30.0,
+        );
+        let flight_dir2 = Vec2::Y;
 
-    for IVec2 { x, y } in map_state.primary_blocks() {
-        let coords = GameCursor::game_to_world(x, y, CursorLayer::Room);
-        let closest_dir = coords - spawn_point;
-        let closest_dist = closest_dir.angle_to(flight_dir).sin() * closest_dir.length();
-        if closest_dist <= cell_radius {
-            return;
+        let mut success = true;
+        for IVec2 { x, y } in map_state.primary_blocks() {
+            let room_pos = GameCursor::game_to_world(x, y, CursorLayer::Room);
+            if ray_intersects_circle(spawn_point1, flight_dir1, room_pos, room_radius)
+                || ray_intersects_circle(spawn_point2, flight_dir2, room_pos, room_radius)
+            {
+                success = false;
+                break;
+            }
+        }
+
+        let speed = 10.0;
+
+        if success {
+            *last_spawned_aurelium = time.elapsed_secs();
+            rocks.push((spawn_point1, flight_dir1 * speed, RockKind::Aurelium));
+            rocks.push((spawn_point2, flight_dir2 * speed, RockKind::Aurelium));
         }
     }
 
-    commands.entity(root_entity.world).with_child((
-        Rock {
-            movement_speed: flight_dir.normalize() * rng.random_range(1.0..3.0),
-            rotation_speed: rng.random_range(-1.0..1.0),
-            rotation_axis: Transform::from_rotation(Quat::random()).forward(),
-            kind: RockKind::Copper,
-        },
-        Transform::from_xyz(spawn_point.x, spawn_point.y, 2.0)
-            .looking_to(flight_dir.extend(0.0), Vec3::Z)
-            .with_scale(Vec3::splat(rng.random_range(0.2..0.5))),
-    ));
+    if time.elapsed_secs() - *last_spawned >= 1.0 {
+        let rand_y = rng.random_range(min.y - 10.0..=max.y + 10.0);
+        let flight_dir = Vec2::NEG_X;
 
-    *last_spawned = time.elapsed_secs();
+        let spawn_point = Vec2::new(max.x + 30.0, rand_y);
+
+        let mut success = true;
+        for IVec2 { x, y } in map_state.primary_blocks() {
+            let room_pos = GameCursor::game_to_world(x, y, CursorLayer::Room);
+            if ray_intersects_circle(spawn_point, flight_dir, room_pos, room_radius) {
+                success = false;
+                break;
+            }
+        }
+
+        let speed = 2.0;
+
+        let weighted = WeightedIndex::new(RockKind::iter().map(RockKind::probability)).unwrap();
+        let kind = RockKind::iter().nth(weighted.sample(&mut rng)).unwrap();
+
+        if success {
+            *last_spawned = time.elapsed_secs();
+            rocks.push((spawn_point, flight_dir * speed, kind));
+        }
+    }
+
+    for (spawn_point, movement_speed, kind) in rocks {
+        let scale = rng.random_range(0.2..0.5);
+        commands.entity(root_entity.world).with_child((
+            Rock {
+                movement_speed,
+                rotation_speed: rng.random_range(-1.0..1.0),
+                rotation_axis: Transform::from_rotation(Quat::random()).forward(),
+                scale,
+                kind,
+            },
+            Transform::from_xyz(spawn_point.x, spawn_point.y, 2.0)
+                .looking_to(movement_speed.normalize().extend(0.0), Vec3::Z)
+                .with_scale(Vec3::splat(scale)),
+        ));
+    }
 }
 
 #[derive(Component, ShaderType, Clone)]

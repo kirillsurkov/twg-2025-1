@@ -12,7 +12,7 @@ use crate::{
 use super::{
     builder::{Enabled, Ready},
     game_cursor::{CursorLayer, GameCursor},
-    map_state::{Cargo, MapState},
+    map_state::MapState,
     player::PlayerState,
     rock::{Rock, RockState},
 };
@@ -219,8 +219,10 @@ fn update(
                 length -= time.delta_secs() * speed;
                 *hook_state = if length <= 0.0 {
                     if let Some(rock) = rock {
-                        if let Ok(rock) = rocks.get(rock) {
-                            map_state.harvest(Cargo::Copper, 1.0);
+                        if let Ok((rock, _, _)) = rocks.get(rock) {
+                            for (cargo, count) in rock.resources() {
+                                map_state.harvest(cargo, count);
+                            }
                         }
                         if let Some(rock) = commands.get_entity(rock) {
                             targeted_rocks.remove(&rock.id());
