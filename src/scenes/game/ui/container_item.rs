@@ -1,6 +1,9 @@
 use bevy::prelude::*;
 
-use crate::{components::clicked_event::Clicked, scenes::AppState};
+use crate::{
+    components::clicked_event::{Clicked, Dehovered, Hovered},
+    scenes::AppState,
+};
 
 use super::palette::{COLOR_HIGHLIGHT_DARK, COLOR_HIGHLIGHT_LIGHT, COLOR_TEXT};
 
@@ -122,9 +125,15 @@ fn update(
     for (entity, interaction) in interactions.iter() {
         match *interaction {
             Interaction::None => {
+                if interaction.is_changed() {
+                    commands.trigger_targets(Dehovered, entity);
+                }
                 commands.entity(entity).remove::<BackgroundColor>();
             }
             Interaction::Hovered => {
+                if interaction.is_changed() {
+                    commands.trigger_targets(Hovered, entity);
+                }
                 commands
                     .entity(entity)
                     .insert(BackgroundColor(COLOR_HIGHLIGHT_DARK));
