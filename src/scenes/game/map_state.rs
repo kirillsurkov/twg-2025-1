@@ -21,6 +21,7 @@ pub enum Structure {
     EmptyRoom,
     Furnace,
     Generator,
+    Crusher,
     Hook,
 }
 
