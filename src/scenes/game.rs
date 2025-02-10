@@ -231,7 +231,7 @@ fn setup(mut commands: Commands, mut map_state: ResMut<MapState>, root_entity: R
                 parent.spawn(GameUiHeader::new("Cargo"));
                 parent.spawn(GameUiContainer).with_children(|parent| {
                     for cargo in Cargo::iter() {
-                        let footer = parent.spawn(GameUiCargoCount::new(0, 0)).id();
+                        let footer = parent.spawn(GameUiCargoCount::new(0.0, 0.0)).id();
                         cargo_counts.push((cargo.clone(), footer));
                         parent.spawn(GameUiContainerItem::new(cargo.name()).footer(footer));
                     }
@@ -417,8 +417,8 @@ fn update(
     for (cargo, count) in &state.cargo_counts {
         if let Ok(mut count) = cargo_counts.get_mut(*count) {
             let (cur, max) = map_state.cargo_count(cargo.clone());
-            count.cur = cur as u32;
-            count.max = max as u32;
+            count.cur = cur;
+            count.max = max;
         }
     }
 }

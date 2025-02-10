@@ -12,6 +12,7 @@ use crate::{
 use super::{
     builder::{Enabled, Ready},
     game_cursor::{CursorLayer, GameCursor},
+    map_state::{Cargo, MapState},
     player::PlayerState,
     rock::{Rock, RockState},
 };
@@ -168,6 +169,7 @@ fn update(
     mut rocks: Query<(&Rock, &mut RockState, &mut Transform)>,
     mut transforms: Query<&mut Transform, Without<RockState>>,
     mut targeted_rocks: Local<HashSet<Entity>>,
+    mut map_state: ResMut<MapState>,
     collisions: Res<Collisions>,
     time: Res<Time>,
 ) {
@@ -217,6 +219,9 @@ fn update(
                 length -= time.delta_secs() * speed;
                 *hook_state = if length <= 0.0 {
                     if let Some(rock) = rock {
+                        if let Ok(rock) = rocks.get(rock) {
+                            map_state.harvest(Cargo::Copper, 1.0);
+                        }
                         if let Some(rock) = commands.get_entity(rock) {
                             targeted_rocks.remove(&rock.id());
                             rock.despawn_recursive();

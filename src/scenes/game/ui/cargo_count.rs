@@ -17,12 +17,12 @@ impl Plugin for GameUiCargoCountPlugin {
 
 #[derive(Component)]
 pub struct GameUiCargoCount {
-    pub cur: u32,
-    pub max: u32,
+    pub cur: f32,
+    pub max: f32,
 }
 
 impl GameUiCargoCount {
-    pub fn new(cur: u32, max: u32) -> Self {
+    pub fn new(cur: f32, max: f32) -> Self {
         Self { cur, max }
     }
 }
@@ -73,7 +73,7 @@ fn init(
                     .entity(entity)
                     .insert((
                         Node {
-                            width: Val::Px(50.0),
+                            width: Val::Px(100.0),
                             flex_shrink: 0.0,
                             flex_direction: FlexDirection::Column,
                             row_gap: Val::Px(5.0),
@@ -104,10 +104,10 @@ fn update(counts: Query<(&GameUiCargoCount, &State)>, mut texts: Query<&mut Text
     for (count, state) in counts.iter() {
         let State::Idle { cur, max } = state;
         if let Ok(mut text) = texts.get_mut(*cur) {
-            text.0 = format!("{}", count.cur);
+            text.0 = format!("{:.2}", count.cur);
         }
         if let Ok(mut text) = texts.get_mut(*max) {
-            text.0 = format!("{}", count.max);
+            text.0 = format!("{:.2}", count.max);
         }
     }
 }

@@ -1,3 +1,4 @@
+use core::f32;
 use std::collections::BTreeMap;
 
 use bevy::{
@@ -250,6 +251,12 @@ impl MapState {
             self.cargo_max.get(&cargo).cloned().unwrap_or_default(),
         )
     }
+
+    pub fn harvest(&mut self, cargo: Cargo, count: f32) {
+        let cur = self.cargo.entry(cargo.clone()).or_default();
+        *cur += count;
+        *cur = cur.min(self.cargo_max.get(&cargo).cloned().unwrap_or_default());
+    }
 }
 
 fn tick(mut map_state: ResMut<MapState>, time: Res<Time>) {
@@ -307,6 +314,70 @@ fn tick(mut map_state: ResMut<MapState>, time: Res<Time>) {
 
     map_state.cargo_max = cargo_max;
     map_state.total_energy = total_energy;
+
+    let delta = time.delta_secs();
+
+    let mut process = |(from, to, speed, ratio): (Vec<Cargo>, Cargo, f32, f32)| {
+        let to_max = map_state.cargo_max.get(&to).cloned().unwrap_or_default();
+        let to_cur = map_state.cargo.get(&to).cloned().unwrap_or_default();
+        let from_cur = from
+            .iter()
+            .map(|f| map_state.cargo.get(f).cloned().unwrap_or_default())
+            .collect::<Vec<_>>();
+
+        let mut from_min = f32::MAX;
+        for value in &from_cur {
+            if *value < from_min {
+                from_min = *value;
+            }
+        }
+        if from_min == f32::MAX {
+            from_min = 0.0;
+        }
+
+        print!("{from_min} ");
+
+        let from_sub = (speed * delta).min(from_min);
+        let to_add = (from_sub * ratio).min(to_max - to_cur);
+        let from_sub = to_add / ratio;
+
+        println!("{from_sub}");
+
+        for from in &from {
+            *map_state.cargo.entry(from.clone()).or_default() -= from_sub;
+        }
+        *map_state.cargo.entry(to).or_default() += to_add;
+    };
+
+    for node in map.values() {
+        match node {
+            MapNode::Furnace => {
+                [
+                    (vec![Cargo::Ice], Cargo::Water, 0.4, 1.0),
+                    (vec![Cargo::Copper], Cargo::CopperPlates, 0.2, 0.5),
+                    (vec![Cargo::Uranium], Cargo::UraniumRods, 0.1, 0.2),
+                ]
+                .into_iter()
+                .for_each(&mut process);
+            }
+            MapNode::Crusher => {
+                [(vec![Cargo::Stone], Cargo::Silicon, 0.5, 1.0)]
+                    .into_iter()
+                    .for_each(&mut process);
+            }
+            MapNode::Enrichment => {
+                [(
+                    vec![Cargo::UraniumRods, Cargo::Aurelium],
+                    Cargo::Batteries,
+                    0.1,
+                    0.2,
+                )]
+                .into_iter()
+                .for_each(&mut process);
+            }
+            _ => {}
+        }
+    }
 }
 
 fn check_connectivity(mut map_state: ResMut<MapState>) {
